@@ -34,7 +34,7 @@ public class AgentTask implements Serializable {
 
     @Schema(description = "关联会话ID")
     @TableField(value = "conversation_id")
-    private Long conversationId;
+    private String conversationId;
 
     @Schema(description = "关联消息ID")
     @TableField(value = "message_id")

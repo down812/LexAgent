@@ -45,3 +45,16 @@
 - ElasticsearchClient 由 Spring Boot 自动配置（依赖 elasticsearch-java 8.15.5，spring-ai-starter-vector-store-elasticsearch 传递引入）
 - 接口：`POST /knowledge/search/hybrid`（对比 `/search` 基础向量检索）
 - 召回扩大倍数 4（topK×4 召回，给 rerank 更多候选）
+
+## 阶段四·Multi-Agent 多智能体协作（已完成）
+- 4个Agent：CaseAnalysis（案件结构化）→ LegalSearch（混合检索）→ LegalAnalysis（法律分析）→ Reviewer（核验审核）
+- SupervisorAgentService 编排串联 + SSE回调推送 + AgentTask持久化 + 最终回答组装
+- LLM调用封装：LlmService 注入 Spring AI ChatModel（required=false），DeepSeek 兼容OpenAI协议
+- JSON解析：Hutool JSONUtil + extractJson（去markdown代码块）
+- Reviewer双重审核：算法预检（法律依据真实性校验+绝对化表达黑名单）+ LLM深度审核，综合可信度评分
+- 防幻觉机制：LegalAnalysisAgent提示词强制法律依据来自检索结果；Reviewer算法校验引用条款是否在检索结果中
+- SSE流式：SseEmitter + AsyncTaskExecutor异步，事件序列 agent_start→agent_result→citation→content→done
+- **ThreadLocal注意**：LoginContext在LoginInterceptor.afterCompletion清理，SSE异步前必须同步读取userId
+- 最终回答结构：初步判断/法律依据/结合情况/处理建议/风险提示（对应需求文档第10章）
+- 接口：`POST /chat/consult`（SSE流式）、`GET /chat/conversations`、`GET /chat/messages/{id}`、`DELETE /chat/conversation/{id}`
+- 各Agent均有降级机制：LLM不可用时拼接查询/构建基本分析/跳过审核

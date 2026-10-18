@@ -33,7 +33,7 @@ public class Message implements Serializable {
 
     @Schema(description = "会话ID")
     @TableField(value = "conversation_id")
-    private Long conversationId;
+    private String conversationId;
 
     @Schema(description = "角色(user/assistant)")
     @TableField(value = "role")

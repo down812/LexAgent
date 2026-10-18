@@ -27,9 +27,9 @@ public class Conversation implements Serializable {
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 
-    @Schema(description = "会话ID")
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
+    @Schema(description = "会话ID（前端生成，UUID格式）")
+    @TableId(value = "id", type = IdType.ASSIGN_UUID)
+    private String id;
 
     @Schema(description = "用户ID")
     @TableField(value = "user_id")
