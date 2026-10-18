@@ -1,0 +1,38 @@
+# ============================================================================
+# OCR 微服务依赖（Python 3.9 ~ 3.13）
+# ----------------------------------------------------------------------------
+# ⚠️ 重要：paddlepaddle 必须用百度官方源安装，不要写在这里！
+#   PyPI 上的 paddlepaddle 是旧版 2.6.x，不支持 Python 3.13
+#   PaddlePaddle 3.x 只在百度官方源发布，支持 Python 3.9-3.13
+#
+# 安装顺序（必须分两步）：
+#   第 1 步：安装 PaddlePaddle 3.x（CPU 版，官方源）
+#       pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+#   第 2 步：安装其余依赖
+#       pip install -r requirements.txt
+#
+# 或直接运行安装脚本：
+#   Windows: install.bat
+#   Linux/Mac: ./install.sh
+# ============================================================================
+
+# PaddleOCR 3.x（基础文字识别，不含文档解析等可选依赖，体积更小）
+# 3.x 与 2.x API 不兼容，本服务的 ocr_engine.py 已适配 3.x API
+paddleocr>=3.0.0,<4.0.0
+
+# FastAPI Web 框架
+fastapi==0.115.0
+
+# ASGI 服务器
+uvicorn==0.30.6
+
+# PyMuPDF：PDF 拆页转图片（无需额外安装 poppler）
+# 必须用 1.24.12+：1.24.10 不支持 Python 3.13（无预编译 wheel，会从源码编译失败）
+# 1.24.12 起支持 Python 3.13 并改用 Stable ABI（一个 wheel 适用所有 Python 版本）
+pymupdf==1.24.14
+
+# 图像处理
+pillow==10.4.0
+
+# Python-multipart：FastAPI 文件上传
+python-multipart==0.0.12

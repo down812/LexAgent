@@ -37,6 +37,14 @@
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>2.3.0</version>
             </dependency>
+            <!-- Spring AI BOM：统一管理 Spring AI 核心依赖版本（兼容 Spring Boot 3.4.x） -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>1.0.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -196,6 +204,40 @@
             <groupId>org.apache.curator</groupId>
             <artifactId>curator-client</artifactId>
             <version>5.5.0</version>
+        </dependency>
+
+        <!-- ==================== RAG 法律知识库相关依赖 ==================== -->
+        <!-- Spring AI Alibaba DashScope：提供 Embedding 模型(text-embedding-v3) -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>1.0.0.4</version>
+        </dependency>
+
+        <!-- Spring AI Elasticsearch 向量库（版本由 spring-ai-bom 管理） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-elasticsearch</artifactId>
+        </dependency>
+
+        <!-- Spring AI OpenAI 模型（用于 DeepSeek LLM，DeepSeek 兼容 OpenAI API） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+        <!-- PDF 文本型解析（Apache PDFBox 3.x） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
+        <!-- Word 文档解析（Apache POI，含 poi 与 poi-ooxml） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.3.0</version>
         </dependency>
     </dependencies>
 

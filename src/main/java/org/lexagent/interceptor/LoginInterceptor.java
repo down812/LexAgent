@@ -8,6 +8,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.io.IOException;
@@ -31,7 +32,7 @@ public class LoginInterceptor implements HandlerInterceptor {
             String token = (String) request.getAttribute("validToken");
             Claims claims = (Claims) request.getAttribute("jwtClaims");
 
-            // 新增：如果 claims 为 null，说明是无需拦截的接口，直接放行
+            // 如果 claims 为 null，说明是无需拦截的接口，直接放行
             if (claims == null) {
                 return true;
             }
@@ -49,8 +50,6 @@ public class LoginInterceptor implements HandlerInterceptor {
             userDTO.setUserId(userId);
             userDTO.setUserType(userType);
             LoginContext.setUser(userDTO);
-
-
 
             // 4. 放行
             return true;
