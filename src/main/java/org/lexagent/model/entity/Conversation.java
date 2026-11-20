@@ -16,6 +16,8 @@ import java.util.Date;
 
 /**
  * 聊天会话实体
+ * <p>
+ * id 为数据库自增主键；conversation_id 为前端生成的业务会话ID（UUID），供前后端交互使用。
  */
 @TableName(value = "conversations")
 @Data
@@ -27,9 +29,13 @@ public class Conversation implements Serializable {
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 
-    @Schema(description = "会话ID（前端生成，UUID格式）")
-    @TableId(value = "id", type = IdType.ASSIGN_UUID)
-    private String id;
+    @Schema(description = "主键ID（自增）")
+    @TableId(value = "id", type = IdType.AUTO)
+    private Long id;
+
+    @Schema(description = "业务会话ID（前端生成，UUID格式）")
+    @TableField(value = "conversation_id")
+    private String conversationId;
 
     @Schema(description = "用户ID")
     @TableField(value = "user_id")

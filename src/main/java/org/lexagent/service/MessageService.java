@@ -13,18 +13,18 @@ public interface MessageService {
     /**
      * 保存消息
      *
-     * @param conversationId 会话ID
+     * @param conversationId 会话ID（conversations.id 自增主键）
      * @param role           角色(user/assistant)
      * @param content        消息内容
      * @return 保存后的消息实体
      */
-    Message save(String conversationId, String role, String content);
+    Message save(Long conversationId, String role, String content);
 
     /**
      * 查询会话历史消息
      *
-     * @param conversationId 会话ID
+     * @param conversationId 会话ID（conversations.id 自增主键）
      * @return 消息 VO 列表（按时间升序）
      */
-    List<ChatMessageVO> listByConversation(String conversationId);
+    List<ChatMessageVO> listByConversation(Long conversationId);
 }

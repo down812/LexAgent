@@ -12,13 +12,13 @@ public interface AgentTaskService {
     /**
      * 创建任务记录（PENDING 状态）
      *
-     * @param conversationId 会话ID
+     * @param conversationId 会话ID（conversations.id 自增主键）
      * @param messageId       消息ID
      * @param agentType       Agent类型
      * @param input           输入内容(JSON)
      * @return 任务实体（含 id）
      */
-    AgentTask create(String conversationId, Long messageId, String agentType, String input);
+    AgentTask create(Long conversationId, Long messageId, String agentType, String input);
 
     /**
      * 标记任务为运行中

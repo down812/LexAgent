@@ -147,10 +147,10 @@ public class HybridSearchServiceImpl implements HybridSearchService {
             final Query finalQuery;
             if (datasetId != null) {
                 finalQuery = Query.of(q -> q.bool(b -> b
-                        .must(Query.of(m -> m.match(mm -> mm.field("text").query(query))))
+                        .must(Query.of(m -> m.match(mm -> mm.field("content").query(query))))
                         .filter(Query.of(f -> f.term(t -> t.field(RagConstant.META_DATASET_ID).value(datasetId))))));
             } else {
-                finalQuery = Query.of(q -> q.match(m -> m.field("text").query(query)));
+                finalQuery = Query.of(q -> q.match(m -> m.field("content").query(query)));
             }
 
             SearchResponse<Map> resp = esClient.search(s -> s

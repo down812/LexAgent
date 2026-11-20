@@ -10,15 +10,12 @@ import org.lexagent.exception.BusinessNotFoundException;
 import org.lexagent.mapper.DatasetFileMapper;
 import org.lexagent.mapper.DatasetMapper;
 import org.lexagent.model.dto.DatasetFileQueryDTO;
-import org.lexagent.model.dto.LegalChunk;
 import org.lexagent.model.entity.Dataset;
 import org.lexagent.model.entity.DatasetFile;
 import org.lexagent.model.vo.DatasetFileVO;
 import org.lexagent.result.PageResult;
 import org.lexagent.service.DatasetFileService;
-import org.lexagent.service.DocumentParseService;
-import org.lexagent.service.LegalStructureService;
-import org.lexagent.service.VectorStoreService;
+import org.lexagent.service.FileProcessTaskService;
 import org.lexagent.utils.FileStorageUtil;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +29,13 @@ import java.util.stream.Collectors;
 
 /**
  * 知识库文件服务实现
- * 串联：上传 → 文档解析 → 法律结构化切片 → 向量化存储 全链路
+ *
+ * 职责：文件 CRUD（上传存储 / 查询 / 删除）+ 触发解析向量化
+ *
+ * 异步改造：
+ *   uploadFile 存储文件后调用 fileProcessTaskService.processAsync() 异步触发解析，
+ *   立即返回 WAITING 状态，前端通过 GET /file/{id} 轮询状态变化。
+ *   解析向量化实际逻辑在 FileProcessTaskServiceImpl。
  */
 @Slf4j
 @Service
@@ -48,19 +51,16 @@ public class DatasetFileServiceImpl implements DatasetFileService {
     private FileStorageUtil fileStorageUtil;
 
     @Autowired
-    private DocumentParseService documentParseService;
-
-    @Autowired
-    private LegalStructureService legalStructureService;
-
-    @Autowired
-    private VectorStoreService vectorStoreService;
+    private FileProcessTaskService fileProcessTaskService;
 
     /**
-     * 上传法律文件：存储到本地并生成文件记录，随后触发解析向量化链路
+     * 上传法律文件：存储到本地并生成文件记录，异步触发解析向量化链路
      *
-     * 注意：不使用 @Transactional。因 triggerProcess 内含 ES 外部调用与 store 独立事务，
-     * 处理失败时需保留文件记录（状态 FAILED）以便排查，不应回滚 insert。
+     * 改造说明：解析向量化改为异步执行，上传接口立即返回 WAITING 状态。
+     * 前端通过 GET /file/{id} 轮询状态：WAITING → PROCESSING → SUCCESS/FAILED。
+     *
+     * 注意：不使用 @Transactional。文件记录 insert 需独立提交，
+     * 否则异步线程在事务未提交时查不到记录会跳过处理。
      */
     @Override
     public DatasetFileVO uploadFile(Long datasetId, MultipartFile file) {
@@ -97,8 +97,10 @@ public class DatasetFileServiceImpl implements DatasetFileService {
                 .build();
         datasetFileMapper.insert(record);
 
-        // 5. 触发解析向量化链路：解析 → 结构化切片 → 向量化存储
-        triggerProcess(record.getId());
+        // 5. 异步触发解析向量化链路（立即返回，不等待）
+        //    注意：必须在 insert 提交后调用，否则异步线程查不到记录
+        log.info("文件[{}]上传成功，状态=WAITING，异步触发解析向量化", record.getId());
+        fileProcessTaskService.processAsync(record.getId());
 
         return toVO(record);
     }
@@ -159,47 +161,18 @@ public class DatasetFileServiceImpl implements DatasetFileService {
     }
 
     /**
-     * 触发文件解析向量化链路：文档解析 → 法律结构化切片 → 向量化存储
-     * 成功置 SUCCESS 并记录 chunkCount，失败置 FAILED 并记录 errorMsg
+     * 触发文件解析向量化链路（同步版，供手动重处理/测试用）
+     *
+     * 上传流程已改为异步（uploadFile 内调 processAsync），
+     * 此方法保留为同步执行，用于：
+     *   - 失败文件重新处理（管理员手动触发）
+     *   - 单元测试同步验证
+     *   - 外部任务调度调用
      */
     @Override
     public void triggerProcess(Long fileId) {
-        DatasetFile record = datasetFileMapper.selectById(fileId);
-        if (record == null) {
-            return;
-        }
-        // 置为处理中
-        record.setStatus(RagConstant.FILE_STATUS_PROCESSING);
-        datasetFileMapper.updateById(record);
-
-        try {
-            // 1. 文档解析为纯文本
-            String absPath = fileStorageUtil.absolutePath(record.getFilePath());
-            String text = documentParseService.parse(absPath, record.getFileType());
-
-            // 2. 获取法律领域（来自所属知识库）
-            Dataset dataset = datasetMapper.selectById(record.getDatasetId());
-            String domain = (dataset != null) ? dataset.getDomain() : "";
-
-            // 3. 法律文本结构化切片
-            List<LegalChunk> chunks = legalStructureService.structure(text, domain);
-
-            // 4. 向量化存储（写入 Elasticsearch + MySQL）
-            int count = vectorStoreService.store(chunks, record.getDatasetId(), fileId, domain);
-
-            // 5. 成功
-            record.setStatus(RagConstant.FILE_STATUS_SUCCESS);
-            record.setChunkCount(count);
-            record.setProcessTime(DateTime.now());
-            datasetFileMapper.updateById(record);
-            log.info("文件[{}]处理完成，切片数={}", fileId, count);
-        } catch (Exception e) {
-            log.error("文件[{}]处理失败", fileId, e);
-            record.setStatus(RagConstant.FILE_STATUS_FAILED);
-            record.setErrorMsg(e.getMessage());
-            record.setProcessTime(DateTime.now());
-            datasetFileMapper.updateById(record);
-        }
+        log.info("手动触发文件处理（同步）：fileId={}", fileId);
+        fileProcessTaskService.process(fileId);
     }
 
     private DatasetFileVO toVO(DatasetFile file) {

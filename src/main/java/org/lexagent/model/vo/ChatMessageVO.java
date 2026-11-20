@@ -24,8 +24,8 @@ public class ChatMessageVO {
     @Schema(description = "角色(user/assistant)")
     private String role;
 
-    @Schema(description = "消息内容")
-    private String content;
+    @Schema(description = "消息内容（user 为纯文本字符串；assistant 为 FinalLegalAnswer 结构化对象，无需二次 JSON.parse）")
+    private Object content;
 
     @Schema(description = "创建时间")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")

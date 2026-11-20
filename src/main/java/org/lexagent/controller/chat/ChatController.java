@@ -86,10 +86,11 @@ public class ChatController {
         log.info("法律问诊请求：userId={}, conversationId={}, query长度={}",
                 userId, dto.getConversationId(), StrUtil.length(dto.getQuery()));
 
-        // 2. 创建/获取会话（conversationId 由前端生成，为空则后端生成 UUID）
+        // 2. 创建/获取会话（conversationId 为前端生成的业务UUID，getOrCreate 后拿到自增主键 id）
         Conversation conversation = conversationService.getOrCreate(
                 userId, dto.getConversationId(), dto.getQuery());
-        final String conversationId = conversation.getId();
+        // 后续关联 messages/agent_tasks 均使用 conversations.id（自增主键）
+        final Long conversationId = conversation.getId();
 
         // 3. 保存用户消息
         Message userMessage = messageService.save(conversationId,
@@ -270,9 +271,9 @@ public class ChatController {
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }
-        // 校验会话归属
-        conversationService.getByIdAndUser(conversationId, userId);
-        return Result.success(messageService.listByConversation(conversationId));
+        // 前端传入的是业务UUID，先校验归属并拿到自增主键 id，再用 id 查历史消息
+        Conversation conversation = conversationService.getByIdAndUser(conversationId, userId);
+        return Result.success(messageService.listByConversation(conversation.getId()));
     }
 
     @DeleteMapping("/conversation/{conversationId}")

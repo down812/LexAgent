@@ -62,6 +62,7 @@ public class User implements Serializable {
 
     @Schema(description = "用户最近一次活跃时间")
     @TableField(value = "last_active")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date lastActive;
 
     @Schema(description = "用户联系邮箱")

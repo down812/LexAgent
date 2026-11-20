@@ -18,8 +18,11 @@ import java.util.Date;
 @Builder
 public class ConversationVO {
 
-    @Schema(description = "会话ID")
-    private String id;
+    @Schema(description = "主键ID（自增）")
+    private Long id;
+
+    @Schema(description = "业务会话ID（前端生成，UUID格式）")
+    private String conversationId;
 
     @Schema(description = "会话标题")
     private String title;

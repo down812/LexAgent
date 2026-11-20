@@ -2,6 +2,8 @@ package org.lexagent.model.dto;
 
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,6 +24,7 @@ public class SubaccountUpdateDTO {
     private String password;
 
     @Schema(description = "新类型（可选，仅支持1↔2互转，禁止修改为0）")
-    @Pattern(regexp = "^(1|2)$", message = "修改后类型仅支持 1(普通管理员)、2(普通用户)")
+    @Min(value = 1, message = "修改后类型仅支持 1(普通管理员)、2(普通用户)")
+    @Max(value = 2, message = "修改后类型仅支持 1(普通管理员)、2(普通用户)")
     private Integer type;
 }

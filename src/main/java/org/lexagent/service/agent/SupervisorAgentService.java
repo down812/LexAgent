@@ -20,11 +20,11 @@ public interface SupervisorAgentService {
      * 执行多 Agent 协作流程（流式）
      *
      * @param userQuery       用户法律问题描述
-     * @param conversationId  会话ID
+     * @param conversationId  会话ID（conversations.id 自增主键）
      * @param messageId         消息ID
      * @param eventCallback   SSE 事件回调（可为 null）
      * @return 最终法律回答
      */
-    FinalLegalAnswer execute(String userQuery, String conversationId, Long messageId,
+    FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
                              Consumer<AgentEvent> eventCallback);
 }

@@ -101,17 +101,19 @@ CREATE TABLE `legal_articles` (
 -- ============================================
 -- 6. 聊天会话表 (conversations)
 --    用户每次法律问诊创建一个会话，关联消息记录
---    会话ID由前端生成（UUID格式），不自增
+--    id 为数据库自增主键；conversation_id 为前端生成的业务会话ID（UUID，唯一索引）
 -- ============================================
 DROP TABLE IF EXISTS `conversations`;
 CREATE TABLE `conversations` (
-                         `id` varchar(64) NOT NULL COMMENT '会话ID（前端生成，UUID格式）',
+                         `id` bigint NOT NULL AUTO_INCREMENT COMMENT '主键ID（自增）',
+                         `conversation_id` varchar(64) NOT NULL COMMENT '业务会话ID（前端生成，UUID格式）',
                          `user_id` bigint NOT NULL COMMENT '用户ID',
                          `title` varchar(200) DEFAULT NULL COMMENT '会话标题（取首条消息摘要）',
                          `status` varchar(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态(ACTIVE/ARCHIVED)',
                          `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
                          `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
                          PRIMARY KEY (`id`),
+                         UNIQUE KEY `uk_conversation_id` (`conversation_id`),
                          KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='聊天会话表';
 
@@ -122,7 +124,7 @@ CREATE TABLE `conversations` (
 DROP TABLE IF EXISTS `messages`;
 CREATE TABLE `messages` (
                          `id` bigint NOT NULL AUTO_INCREMENT COMMENT '消息ID',
-                         `conversation_id` varchar(64) NOT NULL COMMENT '会话ID（关联conversations.id）',
+                         `conversation_id` bigint NOT NULL COMMENT '业务会话ID（关联conversations.id）',
                          `role` varchar(20) NOT NULL COMMENT '角色(user/assistant)',
                          `content` text NOT NULL COMMENT '消息内容',
                          `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -137,7 +139,7 @@ CREATE TABLE `messages` (
 DROP TABLE IF EXISTS `agent_tasks`;
 CREATE TABLE `agent_tasks` (
                          `id` bigint NOT NULL AUTO_INCREMENT COMMENT '任务ID',
-                         `conversation_id` varchar(64) DEFAULT NULL COMMENT '关联会话ID',
+                         `conversation_id` bigint DEFAULT NULL COMMENT '业务会话ID（关联conversations.id）',
                          `message_id` bigint DEFAULT NULL COMMENT '关联消息ID',
                          `agent_type` varchar(50) NOT NULL COMMENT 'Agent类型(CASE_ANALYSIS/LEGAL_SEARCH/LEGAL_ANALYSIS/REVIEWER)',
                          `input` text COMMENT '输入内容(JSON)',

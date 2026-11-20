@@ -33,5 +33,8 @@ public class RedisConstant {
     //邮箱验证码存储key前缀
     public static final String EMAIL_CODE_KEY = "email:code:";
 
+    //最近活跃时间刷新节流key前缀（防止每个请求都写库）
+    public static final String LAST_ACTIVE_REFRESH_KEY = "user:last_active:refresh:";
+
 
 }

@@ -31,9 +31,9 @@ public class Message implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "会话ID")
+    @Schema(description = "会话ID（关联conversations.id）")
     @TableField(value = "conversation_id")
-    private String conversationId;
+    private Long conversationId;
 
     @Schema(description = "角色(user/assistant)")
     @TableField(value = "role")

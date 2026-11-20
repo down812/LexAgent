@@ -7,6 +7,7 @@ import org.lexagent.constants.PromptConstant;
 import org.lexagent.model.vo.CaseAnalysisResult;
 import org.lexagent.model.vo.HybridSearchResult;
 import org.lexagent.model.vo.LegalAnalysisResult;
+import org.lexagent.model.vo.LegalAnalysisResult.LegalBasisItem;
 import org.lexagent.model.vo.ReviewResult;
 import org.lexagent.service.agent.ReviewerAgentService;
 import org.lexagent.service.LlmService;
@@ -14,9 +15,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Reviewer Agent 实现
@@ -44,6 +49,9 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
             "一定不", "必定不", "保证", "承诺", "百分之百"
     };
 
+    /** 提取阿拉伯数字 */
+    private static final Pattern DIGIT_PATTERN = Pattern.compile("\\d+");
+
     @Override
     public ReviewResult review(CaseAnalysisResult caseAnalysis,
                                LegalAnalysisResult legalAnalysis,
@@ -54,8 +62,25 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
                 searchResults != null ? searchResults.size() : 0);
         long start = System.currentTimeMillis();
 
+        // 诊断日志：打印检索结果和法律依据的原始值，便于定位匹配问题
+        if (searchResults != null) {
+            for (HybridSearchResult r : searchResults) {
+                log.info("[Reviewer诊断] 检索结果: lawName=[{}], articleNo=[{}], verified={}",
+                        r.getLawName(), r.getArticleNo(), r.getVerified());
+            }
+        }
+        if (legalAnalysis != null && legalAnalysis.getLegalBasis() != null) {
+            for (LegalBasisItem item : legalAnalysis.getLegalBasis()) {
+                log.info("[Reviewer诊断] 法律依据: lawName=[{}], articleNo=[{}]",
+                        item.getLawName(), item.getArticleNo());
+            }
+        }
+        log.info("[Reviewer诊断] LLM可用: {}", llmService.isAvailable());
+
         // ========== 1. 算法预检：法律依据真实性 ==========
         List<ReviewResult.ReviewIssue> algorithmIssues = new ArrayList<>();
+        int basisTotal = (legalAnalysis != null && legalAnalysis.getLegalBasis() != null)
+                ? legalAnalysis.getLegalBasis().size() : 0;
         int basisCheckPass = checkLegalBasis(legalAnalysis, searchResults, algorithmIssues);
 
         // ========== 2. 算法预检：风险表达检测 ==========
@@ -68,7 +93,7 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
         }
 
         // ========== 4. 综合审核结果 ==========
-        ReviewResult finalResult = mergeResults(algorithmIssues, basisCheckPass, llmResult);
+        ReviewResult finalResult = mergeResults(algorithmIssues, basisCheckPass, basisTotal, llmResult);
 
         long cost = System.currentTimeMillis() - start;
         log.info("[Reviewer] 审核完成：passed={}, confidence={}, issues={}, 耗时={}ms",
@@ -79,8 +104,10 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
     /**
      * 算法预检1：法律依据真实性
-     * 检查 LLM 分析中引用的法律名+条款号是否全部来自检索结果。
-     * 若引用了检索结果中不存在的条款，标记为 HIGH 严重度幻觉。
+     * <p>
+     * 检查 LLM 分析中引用的法律名+条款号是否来自检索结果。
+     * 采用归一化匹配：法律名去书名号/去"中华人民共和国"前缀后双向 contains；
+     * 条款号提取数字（中文数字转阿拉伯）后按数字比较。
      *
      * @return 通过校验的条款数
      */
@@ -89,6 +116,7 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
                                 List<ReviewResult.ReviewIssue> issues) {
         if (legalAnalysis == null || legalAnalysis.getLegalBasis() == null
                 || legalAnalysis.getLegalBasis().isEmpty()) {
+            // 未引用法律依据，不视为问题（由 LLM 审核判断分析是否充分）
             return 0;
         }
         if (searchResults == null || searchResults.isEmpty()) {
@@ -102,47 +130,168 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
             return 0;
         }
 
-        // 构建检索结果的法律名+条款号索引
-        Set<String> basisIndex = new HashSet<>();
-        for (HybridSearchResult r : searchResults) {
-            if (StrUtil.isNotBlank(r.getLawName()) && StrUtil.isNotBlank(r.getArticleNo())) {
-                basisIndex.add(r.getLawName() + "|" + r.getArticleNo());
-            }
-        }
-
+        int total = legalAnalysis.getLegalBasis().size();
         int passed = 0;
-        for (LegalAnalysisResult.LegalBasisItem item : legalAnalysis.getLegalBasis()) {
-            String key = StrUtil.blankToDefault(item.getLawName(), "") + "|"
-                    + StrUtil.blankToDefault(item.getArticleNo(), "");
-            if (basisIndex.contains(key)) {
+        List<LegalBasisItem> unmatched = new ArrayList<>();
+
+        for (LegalBasisItem item : legalAnalysis.getLegalBasis()) {
+            boolean matched = matchAnyBasis(item, searchResults);
+            log.info("[Reviewer诊断] 匹配结果: 《{}》{} -> {}",
+                    item.getLawName(), item.getArticleNo(), matched ? "命中" : "未命中");
+            if (matched) {
                 passed++;
             } else {
-                // 模糊匹配：法律名相同、条款号在检索结果中存在
-                boolean fuzzy = false;
-                for (HybridSearchResult r : searchResults) {
-                    if (StrUtil.isNotBlank(item.getLawName())
-                            && item.getLawName().contains(r.getLawName())
-                            && StrUtil.isNotBlank(item.getArticleNo())
-                            && item.getArticleNo().contains(r.getArticleNo())) {
-                        fuzzy = true;
-                        break;
-                    }
-                }
-                if (fuzzy) {
-                    passed++;
-                } else {
-                    issues.add(ReviewResult.ReviewIssue.builder()
-                            .type("LEGAL_BASIS")
-                            .severity("HIGH")
-                            .description("法律分析引用的《" + item.getLawName()
-                                    + "》" + item.getArticleNo()
-                                    + "不在检索结果中，疑似编造条款")
-                            .suggestion("移除该引用或重新检索确认")
-                            .build());
-                }
+                unmatched.add(item);
             }
         }
+        log.info("[Reviewer诊断] 法律依据校验: passed={}/{}", passed, total);
+
+        // 根据通过率决定不匹配条款的严重度：
+        // - 通过率 >= 50%：不匹配项可能仅是格式差异，降为 MEDIUM
+        // - 通过率 < 50% 且 > 0：部分匹配，不匹配项为 HIGH
+        // - 全部不匹配：HIGH（疑似整体编造）
+        double passRate = total == 0 ? 0 : (double) passed / total;
+        String severity = passRate >= 0.5 ? "MEDIUM" : "HIGH";
+
+        for (LegalBasisItem item : unmatched) {
+            String desc = "法律分析引用的《" + StrUtil.blankToDefault(item.getLawName(), "?")
+                    + "》" + StrUtil.blankToDefault(item.getArticleNo(), "?")
+                    + "未在检索结果中找到精确匹配";
+            if (severity.equals("MEDIUM")) {
+                desc += "（可能为格式差异，建议核实）";
+            } else {
+                desc += "，疑似编造条款";
+            }
+            issues.add(ReviewResult.ReviewIssue.builder()
+                    .type("LEGAL_BASIS")
+                    .severity(severity)
+                    .description(desc)
+                    .suggestion(severity.equals("HIGH")
+                            ? "移除该引用或重新检索确认" : "核实法律名称与条款编号是否与检索结果一致")
+                    .build());
+        }
         return passed;
+    }
+
+    /**
+     * 判断单条法律依据是否匹配任一检索结果（法律名 + 条款号双重匹配）
+     */
+    private boolean matchAnyBasis(LegalBasisItem item, List<HybridSearchResult> results) {
+        String itemLaw = item.getLawName();
+        String itemArticle = item.getArticleNo();
+        if (StrUtil.isBlank(itemLaw) && StrUtil.isBlank(itemArticle)) {
+            return false;
+        }
+        for (HybridSearchResult r : results) {
+            if (lawNameMatch(itemLaw, r.getLawName())
+                    && articleMatch(itemArticle, r.getArticleNo())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 法律名匹配：归一化后双向 contains
+     * 归一化 = 去书名号《》、去"中华人民共和国"前缀、去空白
+     */
+    private boolean lawNameMatch(String a, String b) {
+        String na = normalizeLawName(a);
+        String nb = normalizeLawName(b);
+        if (na.isEmpty() || nb.isEmpty()) {
+            // 法律名为空时，仅靠条款号匹配（返回 true 放行，由条款号决定）
+            return true;
+        }
+        return na.contains(nb) || nb.contains(na);
+    }
+
+    /**
+     * 条款号匹配：优先提取数字比较，退化为字符串 contains
+     */
+    private boolean articleMatch(String a, String b) {
+        if (StrUtil.isBlank(a) || StrUtil.isBlank(b)) {
+            // 条款号为空时，仅靠法律名匹配
+            return true;
+        }
+        int numA = extractArticleNumber(a);
+        int numB = extractArticleNumber(b);
+        if (numA > 0 && numB > 0) {
+            return numA == numB;
+        }
+        // 无法提取数字时退化为字符串包含
+        return a.contains(b) || b.contains(a);
+    }
+
+    /**
+     * 法律名归一化：去书名号、去"中华人民共和国"前缀、去空白
+     */
+    private String normalizeLawName(String name) {
+        if (StrUtil.isBlank(name)) {
+            return "";
+        }
+        return name.replace("《", "")
+                .replace("》", "")
+                .replace("中华人民共和国", "")
+                .replaceAll("\\s+", "")
+                .trim();
+    }
+
+    /**
+     * 从条款号提取数字：支持阿拉伯数字和中文数字
+     * 如 "第四十七条"→47，"第47条"→47，"47"→47，"第一百条"→100
+     */
+    private int extractArticleNumber(String articleNo) {
+        if (StrUtil.isBlank(articleNo)) {
+            return 0;
+        }
+        // 先尝试提取阿拉伯数字
+        Matcher m = DIGIT_PATTERN.matcher(articleNo);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group());
+            } catch (Exception e) {
+                // 忽略
+            }
+        }
+        // 中文数字转换
+        return chineseNumToInt(articleNo);
+    }
+
+    /** 中文数字字符映射 */
+    private static final Map<Character, Integer> CN_NUM = new HashMap<>();
+    static {
+        CN_NUM.put('零', 0); CN_NUM.put('一', 1); CN_NUM.put('二', 2);
+        CN_NUM.put('三', 3); CN_NUM.put('四', 4); CN_NUM.put('五', 5);
+        CN_NUM.put('六', 6); CN_NUM.put('七', 7); CN_NUM.put('八', 8);
+        CN_NUM.put('九', 9); CN_NUM.put('十', 10); CN_NUM.put('百', 100);
+        CN_NUM.put('千', 1000); CN_NUM.put('两', 2);
+    }
+
+    /**
+     * 简单中文数字转整数（支持到千）
+     * 如 "四十七"→47，"二十一"→21，"十"→10，"一百"→100，"一百零八"→108
+     */
+    private int chineseNumToInt(String s) {
+        int result = 0;
+        int current = 0;
+        for (char c : s.toCharArray()) {
+            Integer v = CN_NUM.get(c);
+            if (v == null) {
+                continue;
+            }
+            if (v >= 10) {
+                // 十、百、千是单位
+                if (current == 0) {
+                    current = 1;
+                }
+                result += current * v;
+                current = 0;
+            } else {
+                current = v;
+            }
+        }
+        result += current;
+        return result;
     }
 
     /**
@@ -151,9 +300,13 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
      */
     private void checkRiskExpression(LegalAnalysisResult legalAnalysis,
                                     List<ReviewResult.ReviewIssue> issues) {
-        if (legalAnalysis == null) return;
+        if (legalAnalysis == null) {
+            return;
+        }
         String text = buildFullText(legalAnalysis);
-        if (StrUtil.isBlank(text)) return;
+        if (StrUtil.isBlank(text)) {
+            return;
+        }
 
         List<String> found = new ArrayList<>();
         for (String expr : RISK_EXPRESSIONS) {
@@ -173,12 +326,18 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
     private String buildFullText(LegalAnalysisResult r) {
         StringBuilder sb = new StringBuilder();
-        if (r.getCaseAnalysis() != null) sb.append(r.getCaseAnalysis());
+        if (r.getCaseAnalysis() != null) {
+            sb.append(r.getCaseAnalysis());
+        }
         if (r.getLegalIssues() != null) {
-            for (String s : r.getLegalIssues()) sb.append(s);
+            for (String s : r.getLegalIssues()) {
+                sb.append(s);
+            }
         }
         if (r.getSuggestions() != null) {
-            for (String s : r.getSuggestions()) sb.append(s);
+            for (String s : r.getSuggestions()) {
+                sb.append(s);
+            }
         }
         return sb.toString();
     }
@@ -198,7 +357,11 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
             String llmResponse = llmService.chat(PromptConstant.REVIEWER_SYSTEM, userPrompt);
             String json = llmService.extractJson(llmResponse);
-            return JSONUtil.toBean(json, ReviewResult.class);
+            ReviewResult result = JSONUtil.toBean(json, ReviewResult.class);
+            log.info("[Reviewer诊断] LLM审核返回: confidence={}, passed={}, issues={}",
+                    result.getConfidenceScore(), result.getPassed(),
+                    result.getIssues() != null ? result.getIssues().size() : 0);
+            return result;
         } catch (Exception e) {
             log.warn("[Reviewer] LLM 审核失败，仅使用算法预检结果：{}", e.getMessage());
             return null;
@@ -209,7 +372,7 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
      * 综合算法预检与 LLM 审核结果
      */
     private ReviewResult mergeResults(List<ReviewResult.ReviewIssue> algorithmIssues,
-                                      int basisCheckPass,
+                                      int basisCheckPass, int basisTotal,
                                       ReviewResult llmResult) {
         List<ReviewResult.ReviewIssue> allIssues = new ArrayList<>(algorithmIssues);
 
@@ -229,9 +392,13 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
         // 是否有 HIGH 严重度问题
         boolean hasHigh = allIssues.stream().anyMatch(i -> "HIGH".equals(i.getSeverity()));
+        long algoHigh = algorithmIssues.stream().filter(i -> "HIGH".equals(i.getSeverity())).count();
+        long llmHigh = (llmResult != null && llmResult.getIssues() != null)
+                ? llmResult.getIssues().stream().filter(i -> "HIGH".equals(i.getSeverity())).count() : 0;
+        log.info("[Reviewer诊断] hasHigh={}, 来源: 算法HIGH×{}, LLM_HIGH×{}", hasHigh, algoHigh, llmHigh);
 
         // 计算综合可信度
-        int confidence = calculateConfidence(algorithmIssues, basisCheckPass, llmResult, hasHigh);
+        int confidence = calculateConfidence(allIssues, basisCheckPass, basisTotal, llmResult);
 
         // 通过条件：无 HIGH 问题 + 可信度 >= 60
         boolean passed = !hasHigh && confidence >= 60;
@@ -250,24 +417,57 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
     /**
      * 综合可信度计算：
-     * 基础分 80，HIGH 问题 -20，MEDIUM 问题 -8，LOW 问题 -3
-     * 法律依据校验通过率加权
+     * 基础分 85，HIGH 问题 -15，MEDIUM 问题 -5，LOW 问题 -2
+     * 法律依据通过率加权（高通过率加分，低通过率扣分）
+     * LLM 评分作为参考（权重 0.3，避免 LLM 保守评分过度拉低算法分）
      */
     private int calculateConfidence(List<ReviewResult.ReviewIssue> issues,
-                                     int basisCheckPass,
-                                     ReviewResult llmResult,
-                                     boolean hasHigh) {
-        int score = 80;
+                                    int basisCheckPass, int basisTotal,
+                                    ReviewResult llmResult) {
+        int score = 85;
+        int highCount = 0, mediumCount = 0, lowCount = 0;
+
+        // 问题扣分
         for (ReviewResult.ReviewIssue issue : issues) {
             String sev = issue.getSeverity();
-            if ("HIGH".equals(sev)) score -= 20;
-            else if ("MEDIUM".equals(sev)) score -= 8;
-            else if ("LOW".equals(sev)) score -= 3;
+            if ("HIGH".equals(sev)) {
+                score -= 15;
+                highCount++;
+            } else if ("MEDIUM".equals(sev)) {
+                score -= 5;
+                mediumCount++;
+            } else if ("LOW".equals(sev)) {
+                score -= 2;
+                lowCount++;
+            }
         }
-        // LLM 评分作为参考（取加权平均）
+
+        // 法律依据通过率加权
+        int passRateBonus = 0;
+        if (basisTotal > 0) {
+            double passRate = (double) basisCheckPass / basisTotal;
+            if (passRate >= 0.8) {
+                score += 5;  // 高通过率奖励
+                passRateBonus = 5;
+            } else if (passRate < 0.3) {
+                score -= 5;  // 低通过率额外扣分
+                passRateBonus = -5;
+            }
+        }
+
+        int algoScore = score;
+        // LLM 评分作为参考（权重 0.3）
         if (llmResult != null && llmResult.getConfidenceScore() != null) {
-            score = (score + llmResult.getConfidenceScore()) / 2;
+            score = (int) Math.round(score * 0.7 + llmResult.getConfidenceScore() * 0.3);
+            log.info("[Reviewer诊断] 评分计算: 基础85, HIGH×{}(-15), MEDIUM×{}(-5), LOW×{}(-2), 通过率加权({}, pass={}/{}), 算法分={}, LLM分={}, 权重0.7/0.3 -> 最终={}",
+                    highCount, mediumCount, lowCount, passRateBonus, basisCheckPass, basisTotal,
+                    algoScore, llmResult.getConfidenceScore(), score);
+        } else {
+            log.info("[Reviewer诊断] 评分计算: 基础85, HIGH×{}(-15), MEDIUM×{}(-5), LOW×{}(-2), 通过率加权({}, pass={}/{}), 算法分={}, 无LLM评分加权 -> 最终={}",
+                    highCount, mediumCount, lowCount, passRateBonus, basisCheckPass, basisTotal,
+                    algoScore, score);
         }
+
         return Math.max(0, Math.min(100, score));
     }
 }

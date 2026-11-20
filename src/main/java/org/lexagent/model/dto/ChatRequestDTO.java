@@ -11,7 +11,8 @@ import lombok.Data;
 @Data
 public class ChatRequestDTO {
 
-    @Schema(description = "会话ID（前端生成，为空则后端生成UUID）")
+    @Schema(description = "会话ID（前端生成，UUID格式，必填）", example = "550e8400-e29b-41d4-a716-446655440000")
+    @NotBlank(message = "会话ID不能为空，由前端生成")
     private String conversationId;
 
     @Schema(description = "用户法律问题描述", example = "我在公司工作两年，公司突然辞退我，没有提前通知，也没有补偿。")

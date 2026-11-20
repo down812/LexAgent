@@ -24,7 +24,7 @@ public class AgentTaskServiceImpl implements AgentTaskService {
     private boolean persistTasks;
 
     @Override
-    public AgentTask create(String conversationId, Long messageId, String agentType, String input) {
+    public AgentTask create(Long conversationId, Long messageId, String agentType, String input) {
         if (!persistTasks) {
             return AgentTask.builder()
                     .conversationId(conversationId)

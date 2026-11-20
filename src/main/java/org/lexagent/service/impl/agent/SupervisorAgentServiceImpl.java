@@ -61,7 +61,7 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
     private int searchTopK;
 
     @Override
-    public FinalLegalAnswer execute(String userQuery, String conversationId, Long messageId,
+    public FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
                                     Consumer<AgentEvent> eventCallback) {
         log.info("[Supervisor] 开始编排，conversationId={}, query长度={}", conversationId, StrUtil.length(userQuery));
         long totalStart = System.currentTimeMillis();
@@ -224,7 +224,7 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
     // ==================== Agent 执行封装（含 SSE 推送 + 持久化） ====================
 
     private AgentTaskWrapper startAgent(String agentType, String agentName,
-                                        String conversationId, Long messageId,
+                                        Long conversationId, Long messageId,
                                         String input, Consumer<AgentEvent> callback) {
         var task = agentTaskService.create(conversationId, messageId, agentType, input);
         agentTaskService.markRunning(task.getId());

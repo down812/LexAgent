@@ -1,0 +1,454 @@
+/* ============================================================
+   LexAgent 设计系统 · 法律科技风
+   主色：深海军蓝（专业、可信）  点缀：香槟金（权威、公正）
+   ============================================================ */
+:root {
+  /* 品牌色 */
+  --color-primary: #1a3a5c;
+  --color-primary-dark: #12293f;
+  --color-primary-light: #2a4f73;
+  --color-primary-bg: rgba(26, 58, 92, 0.06);
+  --color-accent: #d4a857;
+  --color-accent-dark: #b8934a;
+  --color-accent-light: #e8c98a;
+  --color-accent-bg: rgba(212, 168, 87, 0.12);
+
+  /* 中性色 */
+  --color-bg: #f3f5f8;
+  --color-card: #ffffff;
+  --color-text: #1f2937;
+  --color-text-secondary: #64748b;
+  --color-text-muted: #94a3b8;
+  --color-border: #e5eaf1;
+  --color-border-light: #eef2f7;
+
+  /* 状态色 */
+  --color-success: #67c23a;
+  --color-warning: #e6a23c;
+  --color-danger: #f56c6c;
+
+  /* 阴影（分层、轻量） */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow: 0 1px 3px rgba(16, 24, 40, 0.05), 0 4px 14px rgba(16, 24, 40, 0.04);
+  --shadow-hover: 0 4px 8px rgba(16, 24, 40, 0.05), 0 12px 28px rgba(16, 24, 40, 0.08);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============ Element Plus 皮肤微调 ============ */
+/* 注意：EP 组件样式在开发模式下按需注入，顺序不可控。
+   主题变量定义在 body 上（比 EP 的 :root 更靠近使用处，无论注入顺序都生效）；
+   类选择器覆盖一律加 body 前缀提升优先级。 */
+body {
+  /* 主色板：品牌海军蓝（按钮/标签页/分页/进度条等全局生效，含禁用态） */
+  --el-color-primary: var(--color-primary);
+  --el-color-primary-light-3: #2a4f73;
+  --el-color-primary-light-5: #4a6a8c;
+  --el-color-primary-light-7: #8ba3bb;
+  --el-color-primary-light-8: #b3c4d4;
+  --el-color-primary-light-9: #e8edf2;
+  --el-color-primary-dark-2: var(--color-primary-dark);
+  /* 输入聚焦色 */
+  --el-color-primary-hover: #2a4f73;
+}
+body .el-button {
+  border-radius: 8px;
+  font-weight: 500;
+}
+/* 成功按钮改用金色系，与主按钮形成品牌搭配 */
+body .el-button--success {
+  --el-button-bg-color: var(--color-accent);
+  --el-button-border-color: var(--color-accent);
+  --el-button-hover-bg-color: var(--color-accent-light);
+  --el-button-hover-border-color: var(--color-accent-light);
+  --el-button-active-bg-color: var(--color-accent-dark);
+  --el-button-active-border-color: var(--color-accent-dark);
+  --el-button-text-color: #fff;
+}
+
+/* 输入控件 */
+body .el-input__wrapper,
+body .el-textarea__inner,
+body .el-select__wrapper {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--color-border) inset;
+  transition: box-shadow 0.2s;
+}
+body .el-input__wrapper.is-focus,
+body .el-textarea__inner:focus,
+body .el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 3px rgba(26, 58, 92, 0.08) !important;
+}
+
+/* 表格 */
+body .el-table {
+  --el-table-header-bg-color: #f7f9fc;
+  --el-table-header-text-color: #475569;
+  --el-table-border-color: var(--color-border-light);
+  --el-table-row-hover-bg-color: #f8fafc;
+  font-size: 13px;
+}
+body .el-table th.el-table__cell {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+body .el-table .el-table__cell {
+  padding: 12px 0;
+}
+
+/* 对话框 */
+body .el-dialog {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+body .el-dialog__title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+/* 标签页 */
+body .el-tabs__item {
+  font-weight: 500;
+}
+body .el-tabs__item.is-active {
+  font-weight: 600;
+}
+body .el-tabs__active-bar {
+  background-color: var(--color-accent);
+  height: 3px;
+  border-radius: 2px;
+}
+body .el-tabs__nav-wrap::after {
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* 标签 */
+body .el-tag {
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* 消息提示 */
+body .el-message {
+  border-radius: 10px;
+}
+
+/* ============ 共享页面骨架 ============ */
+.page-container {
+  padding: 24px 28px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* 页头：图标徽章 + 标题 + 副标题 */
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.page-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+  color: var(--color-accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(26, 58, 92, 0.18);
+}
+.page-header-text h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-primary);
+  line-height: 1.3;
+}
+.page-header-text p {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 3px;
+}
+
+/* 兼容旧版页头（保留 .page-title 供未改造处使用） */
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 20px 24px;
+}
+
+.toolbar {
+  margin-bottom: 6px;
+}
+.toolbar .el-form-item {
+  margin-bottom: 14px;
+  margin-right: 16px;
+}
+
+.pager {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ============ 登录 / 注册 共享样式（左右分栏） ============ */
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+}
+/* 左侧品牌区 */
+.auth-brand {
+  flex: 1.15;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, #1e4266 0%, #16324f 45%, #0f2438 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 56px 64px;
+}
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  top: -160px;
+  right: -120px;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 168, 87, 0.16) 0%, transparent 65%);
+}
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  bottom: -200px;
+  left: -140px;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(90, 140, 190, 0.14) 0%, transparent 65%);
+}
+.auth-brand-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 56px;
+}
+.auth-logo-name {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.auth-logo-tag {
+  font-size: 12px;
+  color: var(--color-accent-light);
+  border: 1px solid rgba(212, 168, 87, 0.45);
+  border-radius: 20px;
+  padding: 3px 12px;
+  letter-spacing: 0.08em;
+}
+.auth-slogan {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+}
+.auth-slogan em {
+  font-style: normal;
+  color: var(--color-accent-light);
+}
+.auth-slogan-sub {
+  margin-top: 18px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: rgba(255, 255, 255, 0.62);
+}
+.auth-features {
+  margin-top: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.auth-feature {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.auth-feature-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: rgba(212, 168, 87, 0.14);
+  border: 1px solid rgba(212, 168, 87, 0.3);
+  color: var(--color-accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.auth-feature h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.auth-feature p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.55);
+}
+/* 右侧表单区 */
+.auth-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 48px 40px;
+}
+.auth-form {
+  width: 100%;
+  max-width: 380px;
+}
+.auth-form-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.auth-form-sub {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin: 10px 0 34px;
+}
+.auth-btn {
+  width: 100%;
+  height: 46px;
+  font-size: 15px;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  margin-top: 6px;
+}
+.auth-footer {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+.auth-footer a {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.auth-footer a:hover {
+  color: var(--color-accent-dark);
+}
+.code-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+.code-row .el-input {
+  flex: 1;
+}
+@media (max-width: 960px) {
+  .auth-brand {
+    display: none;
+  }
+}
+
+/* ============ markdown 渲染样式 ============ */
+.markdown-body {
+  line-height: 1.8;
+  font-size: 14px;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 16px 0 8px;
+  color: var(--color-primary);
+}
+.markdown-body p {
+  margin: 8px 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.markdown-body li {
+  margin: 4px 0;
+}
+.markdown-body code {
+  background: var(--color-primary-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.markdown-body blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--color-text-secondary);
+}

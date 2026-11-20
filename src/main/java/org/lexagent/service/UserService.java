@@ -2,10 +2,12 @@ package org.lexagent.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.lexagent.model.dto.UserAuthDTO;
+import org.lexagent.model.dto.UserInfoUpdateDTO;
 import org.lexagent.model.dto.UserLoginDTO;
 import org.lexagent.model.dto.UserRegisterDTO;
 import org.lexagent.model.entity.User;
 import org.lexagent.model.vo.UserAuthVO;
+import org.lexagent.model.vo.UserInfoVO;
 import org.lexagent.model.vo.UserLoginVO;
 
 /**
@@ -39,4 +41,19 @@ public interface UserService extends IService<User> {
     void logout(String token);
 
     UserLoginVO register(UserRegisterDTO userRegisterDTO);
+
+    /**
+     * 查询用户信息（不含密码等敏感字段）
+     * @param userId 用户ID
+     * @return 用户信息
+     */
+    UserInfoVO getUserInfo(Long userId);
+
+    /**
+     * 更新用户信息（邮箱/电话）
+     * @param userId 用户ID
+     * @param updateDTO 待更新字段（留空不修改）
+     * @return 更新后的用户信息
+     */
+    UserInfoVO updateUserUserInfo(Long userId, UserInfoUpdateDTO updateDTO);
 }

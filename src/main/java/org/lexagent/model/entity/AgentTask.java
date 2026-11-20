@@ -32,9 +32,9 @@ public class AgentTask implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    @Schema(description = "关联会话ID")
+    @Schema(description = "关联会话ID（关联conversations.id）")
     @TableField(value = "conversation_id")
-    private String conversationId;
+    private Long conversationId;
 
     @Schema(description = "关联消息ID")
     @TableField(value = "message_id")

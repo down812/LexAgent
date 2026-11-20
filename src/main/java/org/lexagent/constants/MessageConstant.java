@@ -26,6 +26,7 @@ public class MessageConstant {
     public static final String PHONE_ALREADY_LINKED = "该手机号已绑定其他账号";
     public static final String EMAIL_ALREADY_LINKED = "该邮箱已绑定其他账号";
     public static final String USER_MESSAGE_ACCESS_ERROR = "用户信息获取失败，请重新登录";
+    public static final String USER_MESSAGE_UPDATE_ERROR = "用户信息更新失败";
     public static final String LOGOUT_SUCCESS = "退出登录成功";
     public static final String MARK_SUCCESS = "标记操作成功";
     public static final String MARK_ERROR = "标记操作失败，请重试";

@@ -154,6 +154,6 @@ public class LegalVerifyServiceImpl implements LegalVerifyService {
         // 取较短文本长度的较干净子串做 n-gram Jaccard
         String shortA = a.length() > 200 ? a.substring(0, 200) : a;
         String shortB = b.length() > 200 ? b.substring(0, 200) : b;
-        return TextSimilarity.similar(shortA, shortB) / 100.0;
+        return TextSimilarity.similar(shortA, shortB);
     }
 }

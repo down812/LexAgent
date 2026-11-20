@@ -2,11 +2,14 @@ package org.lexagent.controller.user;
 
 import org.lexagent.Enum.UserEnum;
 import org.lexagent.context.LoginContext;
+import org.lexagent.exception.BusinessException;
 import org.lexagent.exception.PermissionDeniedException;
 import org.lexagent.model.dto.SubaccountCreateDTO;
 import org.lexagent.model.dto.SubaccountQueryDTO;
 import org.lexagent.model.dto.SubaccountUpdateDTO;
+import org.lexagent.model.dto.UserInfoUpdateDTO;
 import org.lexagent.model.vo.SubaccountVO;
+import org.lexagent.model.vo.UserInfoVO;
 import org.lexagent.result.PageResult;
 import org.lexagent.result.Result;
 import org.lexagent.service.SubaccountService;
@@ -108,5 +111,28 @@ public class UserController {
         }
         Integer deletedId = subaccountService.deleteSubaccount(subaccountId);
         return Result.success(DELETE_SUBACCOUNT_ERROR, deletedId);
+    }
+
+    @GetMapping("/info")
+    @Operation(summary = "查询用户信息", description = "仅登录用户可调用")
+    public Result<UserInfoVO> getUserInfo() {
+        Long userId = LoginContext.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        return Result.success(userService.getUserInfo(userId));
+    }
+
+    @PutMapping("/info")
+    @Operation(summary = "更新用户信息", description = "仅登录用户可调用")
+    public Result<UserInfoVO> updateUserUserInfo(
+            @Validated @RequestBody UserInfoUpdateDTO updateDTO
+    ) {
+        Long userId = LoginContext.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        UserInfoVO userInfoVO = userService.updateUserUserInfo(userId, updateDTO);
+        return Result.success(userInfoVO);
     }
 }

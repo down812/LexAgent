@@ -1,5 +1,7 @@
 package org.lexagent.model.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -16,9 +18,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SubaccountCreateDTO {
-    // 账号：非空，建议限制格式（如字母/数字，长度6-20）
+    // 账号：非空，建议限制格式（如字母/数字，长度4-20）
     @NotBlank(message = "用户账号不能为空")
-    @Pattern(regexp = "^[a-zA-Z0-9]{6,20}$", message = "账号需为6-20位字母或数字")
+    @Pattern(regexp = "^[a-zA-Z0-9]{4,20}$", message = "账号需为4-20位字母或数字")
     private String identifier;
 
     // 密码：非空，建议限制强度（如包含大小写+数字，长度8-20）
@@ -28,6 +30,7 @@ public class SubaccountCreateDTO {
 
     // 用户类型：非空，仅允许 0(超级管理员)、1(普通管理员)、2(普通用户)
     @NotNull(message = "用户类型不能为空")
-    @Pattern(regexp = "^(0|1|2)$", message = "用户类型仅支持 0(超级管理员)、1(普通管理员)、2(普通用户)")
+    @Min(value = 0, message = "用户类型仅支持 0(超级管理员)、1(普通管理员)、2(普通用户)")
+    @Max(value = 2, message = "用户类型仅支持 0(超级管理员)、1(普通管理员)、2(普通用户)")
     private Integer type;
 }
