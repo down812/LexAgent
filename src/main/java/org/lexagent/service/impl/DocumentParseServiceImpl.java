@@ -4,6 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.hwpf.HWPFDocument;
+import org.apache.poi.hwpf.extractor.WordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.lexagent.constants.RagConstant;
@@ -24,6 +26,7 @@ import java.nio.file.Path;
  * - PDF 文本型：Apache PDFBox 3.x（Loader.loadPDF + PDFTextStripper）
  * - PDF 扫描型：文本层为空时自动转 OCR（阶段二，调 Python PaddleOCR 微服务）
  * - DOCX：Apache POI（XWPFDocument 段落提取）
+ * - DOC（97-2003 老版）：Apache POI scratchpad（HWPFDocument + WordExtractor）
  * - TXT / Markdown：直接 UTF-8 读取
  * - 图片（jpg/png）：阶段二 OCR 识别
  */
@@ -39,6 +42,8 @@ public class DocumentParseServiceImpl implements DocumentParseService {
         switch (fileType) {
             case RagConstant.FILE_TYPE_PDF:
                 return parsePdf(absolutePath);
+            case RagConstant.FILE_TYPE_DOC:
+                return parseDoc(absolutePath);
             case RagConstant.FILE_TYPE_DOCX:
                 return parseDocx(absolutePath);
             case RagConstant.FILE_TYPE_TXT:
@@ -95,6 +100,26 @@ public class DocumentParseServiceImpl implements DocumentParseService {
             }
             String text = sb.toString();
             log.info("DOCX 解析完成：文本长度 {}", text.length());
+            return clean(text);
+        }
+    }
+
+    /**
+     * Word DOC（97-2003 老版格式）解析：HWPFDocument + WordExtractor 按段落提取
+     * V2.0 证据模块新增，依赖 poi-scratchpad
+     */
+    private String parseDoc(String path) throws Exception {
+        try (FileInputStream fis = new FileInputStream(path);
+             HWPFDocument doc = new HWPFDocument(fis);
+             WordExtractor extractor = new WordExtractor(doc)) {
+            StringBuilder sb = new StringBuilder();
+            for (String t : extractor.getParagraphText()) {
+                if (t != null && !t.isEmpty()) {
+                    sb.append(t).append("\n");
+                }
+            }
+            String text = sb.toString();
+            log.info("DOC 解析完成：文本长度 {}", text.length());
             return clean(text);
         }
     }

@@ -35,9 +35,15 @@ public class FinalLegalAnswer {
     @Schema(description = "风险提示")
     private String riskWarning;
 
-    @Schema(description = "审核可信度评分(0-100)")
+    @Schema(description = "可信度评分(0-100)")
     private Integer confidenceScore;
 
     @Schema(description = "审核是否通过")
     private Boolean reviewPassed;
+
+    @Schema(description = "V2.0 追问信息（CHAT-002：缺失的关键信息，用户可一键补充为案件事实）")
+    private List<String> missingInfo;
+
+    @Schema(description = "V2.0 证据引用（11.6：来自证据分析 Agent 的关键发现，仅案件问诊时有值）")
+    private List<String> evidenceReferences;
 }

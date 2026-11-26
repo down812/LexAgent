@@ -30,4 +30,16 @@ public interface ReviewerAgentService {
     ReviewResult review(CaseAnalysisResult caseAnalysis,
                         LegalAnalysisResult legalAnalysis,
                         List<HybridSearchResult> searchResults);
+
+    /**
+     * V2.0 阶段五（AGENT-003）：带案件证据信息的审核
+     * 在法律依据核验基础上增加证据核验（引用不存在证据/未提供材料当证据/歪曲证据内容/推测当事实/绝对化结论/证据不足未说明）
+     */
+    default ReviewResult review(CaseAnalysisResult caseAnalysis,
+                                LegalAnalysisResult legalAnalysis,
+                                List<HybridSearchResult> searchResults,
+                                org.lexagent.model.vo.CaseContextVO caseContext,
+                                org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult) {
+        return review(caseAnalysis, legalAnalysis, searchResults);
+    }
 }

@@ -30,14 +30,22 @@ public class CaseAnalysisAgentServiceImpl implements CaseAnalysisAgentService {
 
     @Override
     public CaseAnalysisResult analyze(String userQuery) {
+        return analyze(userQuery, null);
+    }
+
+    @Override
+    public CaseAnalysisResult analyze(String userQuery, String caseContextText) {
         if (StrUtil.isBlank(userQuery)) {
             throw new BusinessException(AgentConstant.MESSAGE_CONTENT_EMPTY);
         }
 
-        log.info("[CaseAnalysis] 开始分析用户问题，长度={}", userQuery.length());
+        boolean withContext = StrUtil.isNotBlank(caseContextText);
+        log.info("[CaseAnalysis] 开始分析用户问题，长度={}, 含案件上下文={}", userQuery.length(), withContext);
         long start = System.currentTimeMillis();
 
-        String userPrompt = String.format(PromptConstant.CASE_ANALYSIS_USER_TEMPLATE, userQuery);
+        String userPrompt = withContext
+                ? PromptConstant.CASE_ANALYSIS_WITH_CONTEXT_USER_TEMPLATE.formatted(userQuery, caseContextText)
+                : String.format(PromptConstant.CASE_ANALYSIS_USER_TEMPLATE, userQuery);
         String llmResponse = llmService.chat(PromptConstant.CASE_ANALYSIS_SYSTEM, userPrompt);
         String json = llmService.extractJson(llmResponse);
 

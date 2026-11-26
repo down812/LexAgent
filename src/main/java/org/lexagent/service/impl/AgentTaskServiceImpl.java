@@ -25,10 +25,18 @@ public class AgentTaskServiceImpl implements AgentTaskService {
 
     @Override
     public AgentTask create(Long conversationId, Long messageId, String agentType, String input) {
+        return create(conversationId, messageId, null, null, agentType, input);
+    }
+
+    @Override
+    public AgentTask create(Long conversationId, Long messageId, Long caseId,
+                            String taskGroupId, String agentType, String input) {
         if (!persistTasks) {
             return AgentTask.builder()
                     .conversationId(conversationId)
                     .messageId(messageId)
+                    .caseId(caseId)
+                    .taskGroupId(taskGroupId)
                     .agentType(agentType)
                     .input(input)
                     .status(AgentConstant.TASK_PENDING)
@@ -37,6 +45,8 @@ public class AgentTaskServiceImpl implements AgentTaskService {
         AgentTask task = AgentTask.builder()
                 .conversationId(conversationId)
                 .messageId(messageId)
+                .caseId(caseId)
+                .taskGroupId(taskGroupId)
                 .agentType(agentType)
                 .input(input)
                 .status(AgentConstant.TASK_PENDING)

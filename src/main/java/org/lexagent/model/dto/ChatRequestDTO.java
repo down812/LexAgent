@@ -19,4 +19,7 @@ public class ChatRequestDTO {
     @NotBlank(message = "问题描述不能为空")
     @Size(max = 2000, message = "问题描述不能超过2000字")
     private String query;
+
+    @Schema(description = "V2.0 所属案件ID（可选；传入后问诊自动注入案件上下文，会话与案件关联）")
+    private Long caseId;
 }

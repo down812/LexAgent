@@ -36,6 +36,40 @@
     </aside>
 
     <main class="chat-area">
+      <!-- V2.0 案件上下文条（CHAT-001/11.6）：案件模式展示上下文，普通模式可选案件 -->
+      <div class="case-context-bar">
+        <template v-if="caseInfo">
+          <el-icon><Folder /></el-icon>
+          <span class="cc-name">{{ caseInfo.caseName }}</span>
+          <el-tag size="small" effect="plain" type="info">{{ caseInfo.caseType }}</el-tag>
+          <span class="cc-no">{{ caseInfo.caseNo }}</span>
+          <span class="cc-stats">
+            事实 {{ caseInfo.factCount || 0 }} 条 · 证据 {{ caseInfo.evidenceCount || 0 }} 份 · 问诊 {{ caseInfo.conversationCount || 0 }} 次
+          </span>
+          <span class="cc-hint">案件上下文已注入：事实、证据与问诊记录将自动参与本次分析</span>
+          <el-button link size="small" @click="clearCaseContext">退出案件模式</el-button>
+        </template>
+        <template v-else>
+          <el-icon><Folder /></el-icon>
+          <span class="cc-hint">普通问诊（不关联案件）；选择案件后，系统将自动带上案件事实与证据上下文：</span>
+          <el-select
+            v-model="selectedCaseId"
+            placeholder="选择案件进入案件问诊"
+            size="small"
+            style="width: 240px"
+            filterable
+            @change="onCaseSelect"
+          >
+            <el-option
+              v-for="c in myCases"
+              :key="c.id"
+              :label="`${c.caseName}（${c.caseNo}）`"
+              :value="c.id"
+            />
+          </el-select>
+        </template>
+      </div>
+
       <div class="chat-messages" ref="messagesRef">
         <!-- 欢迎空状态 -->
         <div v-if="!messages.length && !streaming" class="chat-welcome">
@@ -68,7 +102,7 @@
             <div class="msg-avatar"><el-avatar :size="34">AI</el-avatar></div>
             <div class="msg-content">
               <div class="msg-role">LexAgent</div>
-              <LegalAnswer v-if="msg.parsedAnswer" :answer="msg.parsedAnswer" />
+              <LegalAnswer v-if="msg.parsedAnswer" :answer="msg.parsedAnswer" :case-id="caseId" :message-id="msg.id" />
               <div v-else class="markdown-body fallback-md" v-html="renderMarkdown(msg.content)"></div>
             </div>
           </template>
@@ -164,7 +198,8 @@ import {
   Reading,
   Upload,
   Picture,
-  Document
+  Document,
+  Folder
 } from '@element-plus/icons-vue'
 import {
   listConversations,
@@ -172,6 +207,7 @@ import {
   deleteConversation,
   ocrRecognize
 } from '@/api/chat'
+import { getCase, queryCases } from '@/api/case'
 import { fetchSSE } from '@/utils/sse'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -193,9 +229,58 @@ const ocrVisible = ref(false)
 const ocrLoading = ref(false)
 const ocrResults = ref([])
 
+// ===== V2.0 案件上下文（CHAT-001/11.6 当前案件选择）=====
+const route = useRoute()
+const caseId = ref(null)
+const caseInfo = ref(null)
+const selectedCaseId = ref(null)
+const myCases = ref([])
+
 onMounted(() => {
+  // 从案件详情"发起案件问诊"跳转进入时，注入案件上下文
+  const qc = Number(route.query.caseId)
+  if (qc > 0) {
+    caseId.value = qc
+    selectedCaseId.value = qc
+    loadCaseContext(qc)
+  }
   loadConversations()
+  loadMyCases()
 })
+
+async function loadCaseContext(id) {
+  try {
+    const res = await getCase(id)
+    if (res.code === 1) caseInfo.value = res.data
+  } catch {
+    // 无权访问或不存在时静默退出案件模式
+    caseId.value = null
+    caseInfo.value = null
+    selectedCaseId.value = null
+  }
+}
+
+async function loadMyCases() {
+  try {
+    const res = await queryCases({ pageNum: 1, pageSize: 100 }, { status: 'ACTIVE' })
+    if (res.code === 1) myCases.value = res.data?.rows || []
+  } catch {
+    // 忽略
+  }
+}
+
+function onCaseSelect(id) {
+  if (id) {
+    caseId.value = id
+    loadCaseContext(id)
+  }
+}
+
+function clearCaseContext() {
+  caseId.value = null
+  caseInfo.value = null
+  selectedCaseId.value = null
+}
 
 async function loadConversations() {
   try {
@@ -345,7 +430,11 @@ async function sendQuery() {
 
   sseController.value = fetchSSE(
     '/chat/consult',
-    { conversationId: currentConversationId.value, query },
+    {
+      conversationId: currentConversationId.value,
+      query,
+      caseId: caseId.value || undefined
+    },
     {
       onEvent(obj, raw) {
         handleSSEEvent(obj, raw)
@@ -388,6 +477,16 @@ function handleSSEEvent(obj, raw) {
   if (event === SSE_EVENT.DONE) {
     streamFinished.value = true
     streaming.value = false
+    // V2.0（11.6 评价入口）：done 事件携带 assistant 真实消息ID，回填到最后一条回答
+    const realId = obj.data?.assistantMessageId
+    if (realId) {
+      for (let i = messages.value.length - 1; i >= 0; i--) {
+        if (messages.value[i].role === 'assistant') {
+          messages.value[i].id = realId
+          break
+        }
+      }
+    }
     loadConversations()
   }
 
@@ -435,6 +534,42 @@ function appendOcrText(r) {
   display: flex;
   height: 100%;
   overflow: hidden;
+}
+/* ============ V2.0 案件上下文条 ============ */
+.case-context-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--color-primary-bg);
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: 13px;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+.case-context-bar .el-icon {
+  color: var(--color-accent-dark);
+}
+.cc-name {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.cc-no {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.cc-stats {
+  font-size: 12px;
+  color: var(--color-primary-light);
+  white-space: nowrap;
+}
+.cc-hint {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* ============ 会话侧栏 ============ */
 .conv-sidebar {

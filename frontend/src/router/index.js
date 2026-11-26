@@ -25,6 +25,18 @@ const routes = [
         meta: { title: '法律智能问诊', icon: 'ChatDotRound' }
       },
       {
+        path: 'cases',
+        name: 'CaseList',
+        component: () => import('@/views/CaseList.vue'),
+        meta: { title: '案件管理', icon: 'Briefcase' }
+      },
+      {
+        path: 'cases/:id',
+        name: 'CaseDetail',
+        component: () => import('@/views/CaseDetail.vue'),
+        meta: { title: '案件详情', icon: 'Briefcase' }
+      },
+      {
         path: 'knowledge',
         name: 'Knowledge',
         component: () => import('@/views/Knowledge.vue'),
@@ -41,6 +53,12 @@ const routes = [
         name: 'Admin',
         component: () => import('@/views/Admin.vue'),
         meta: { title: '子账号管理', icon: 'UserFilled', requireSuperAdmin: true }
+      },
+      {
+        path: 'feedback-stats',
+        name: 'FeedbackStats',
+        component: () => import('@/views/FeedbackStats.vue'),
+        meta: { title: '评价统计', icon: 'DataAnalysis', requireAdmin: true }
       }
     ]
   },

@@ -10,12 +10,14 @@ public class AgentConstant {
     public static final String AGENT_LEGAL_SEARCH = "LEGAL_SEARCH";
     public static final String AGENT_LEGAL_ANALYSIS = "LEGAL_ANALYSIS";
     public static final String AGENT_REVIEWER = "REVIEWER";
+    public static final String AGENT_EVIDENCE_ANALYSIS = "EVIDENCE_ANALYSIS"; // V2.0 阶段五
 
     // ============ Agent 中文名 ============
     public static final String AGENT_NAME_CASE_ANALYSIS = "案件事实分析 Agent";
     public static final String AGENT_NAME_LEGAL_SEARCH = "法律检索 Agent";
     public static final String AGENT_NAME_LEGAL_ANALYSIS = "法律分析 Agent";
     public static final String AGENT_NAME_REVIEWER = "法律核验 Agent";
+    public static final String AGENT_NAME_EVIDENCE_ANALYSIS = "证据分析 Agent"; // V2.0 阶段五
 
     // ============ Agent 任务状态 ============
     public static final String TASK_PENDING = "PENDING";

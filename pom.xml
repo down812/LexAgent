@@ -239,6 +239,12 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.3.0</version>
         </dependency>
+        <!-- 老版 Word .doc 解析（HWPFDocument/WordExtractor，V2.0 证据模块新增） -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-scratchpad</artifactId>
+            <version>5.3.0</version>
+        </dependency>
     </dependencies>
 
     <build>

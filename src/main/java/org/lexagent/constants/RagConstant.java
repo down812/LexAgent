@@ -13,6 +13,7 @@ public class RagConstant {
 
     // ============ 支持的文件类型 ============
     public static final String FILE_TYPE_PDF = "PDF";
+    public static final String FILE_TYPE_DOC = "DOC";
     public static final String FILE_TYPE_DOCX = "DOCX";
     public static final String FILE_TYPE_TXT = "TXT";
     public static final String FILE_TYPE_MD = "MD";

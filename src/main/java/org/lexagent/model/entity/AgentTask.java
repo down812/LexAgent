@@ -40,6 +40,14 @@ public class AgentTask implements Serializable {
     @TableField(value = "message_id")
     private Long messageId;
 
+    @Schema(description = "所属案件ID（V2.0）")
+    @TableField(value = "case_id")
+    private Long caseId;
+
+    @Schema(description = "一次完整Agent协作任务标识（UUID，V2.0）")
+    @TableField(value = "task_group_id")
+    private String taskGroupId;
+
     @Schema(description = "Agent类型(CASE_ANALYSIS/LEGAL_SEARCH/LEGAL_ANALYSIS/REVIEWER)")
     @TableField(value = "agent_type")
     private String agentType;

@@ -56,10 +56,20 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
     public ReviewResult review(CaseAnalysisResult caseAnalysis,
                                LegalAnalysisResult legalAnalysis,
                                List<HybridSearchResult> searchResults) {
-        log.info("[Reviewer] 开始审核，legalBasis={}, searchResults={}",
+        return review(caseAnalysis, legalAnalysis, searchResults, null, null);
+    }
+
+    @Override
+    public ReviewResult review(CaseAnalysisResult caseAnalysis,
+                               LegalAnalysisResult legalAnalysis,
+                               List<HybridSearchResult> searchResults,
+                               org.lexagent.model.vo.CaseContextVO caseContext,
+                               org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult) {
+        log.info("[Reviewer] 开始审核，legalBasis={}, searchResults={}, withEvidence={}",
                 legalAnalysis != null && legalAnalysis.getLegalBasis() != null
                         ? legalAnalysis.getLegalBasis().size() : 0,
-                searchResults != null ? searchResults.size() : 0);
+                searchResults != null ? searchResults.size() : 0,
+                caseContext != null);
         long start = System.currentTimeMillis();
 
         // 诊断日志：打印检索结果和法律依据的原始值，便于定位匹配问题
@@ -86,10 +96,13 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
         // ========== 2. 算法预检：风险表达检测 ==========
         checkRiskExpression(legalAnalysis, algorithmIssues);
 
-        // ========== 3. LLM 深度审核 ==========
+        // ========== 2.5 算法预检：证据不足未说明（V2.0 AGENT-003 检查项 f） ==========
+        checkEvidenceInsufficientDisclosure(legalAnalysis, caseContext, evidenceResult, algorithmIssues);
+
+        // ========== 3. LLM 深度审核（有案件证据输入时启用证据核验模板 a-f） ==========
         ReviewResult llmResult = null;
         if (llmService.isAvailable()) {
-            llmResult = llmReview(caseAnalysis, legalAnalysis, searchResults);
+            llmResult = llmReview(caseAnalysis, legalAnalysis, searchResults, caseContext, evidenceResult);
         }
 
         // ========== 4. 综合审核结果 ==========
@@ -324,6 +337,39 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
         }
     }
 
+    /**
+     * 算法预检（V2.0 AGENT-003 检查项 f）：证据不足未说明
+     * 当证据分析发现缺失证据，而法律分析完全未提及证据不足相关表述时，给出 MEDIUM 问题。
+     */
+    private void checkEvidenceInsufficientDisclosure(LegalAnalysisResult legalAnalysis,
+                                                     org.lexagent.model.vo.CaseContextVO caseContext,
+                                                     org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult,
+                                                     List<ReviewResult.ReviewIssue> issues) {
+        if (evidenceResult == null || evidenceResult.getMissingEvidence() == null
+                || evidenceResult.getMissingEvidence().isEmpty()
+                || legalAnalysis == null || caseContext == null) {
+            return;
+        }
+        String text = buildFullText(legalAnalysis);
+        if (StrUtil.isBlank(text)) {
+            return;
+        }
+        boolean disclosed = text.contains("证据不足") || text.contains("缺少")
+                || text.contains("尚未") || text.contains("建议补充")
+                || text.contains("需要补充") || text.contains("暂无");
+        if (!disclosed) {
+            issues.add(ReviewResult.ReviewIssue.builder()
+                    .type("EVIDENCE")
+                    .severity("MEDIUM")
+                    .description("证据分析发现存在缺失证据（"
+                            + String.join("、", evidenceResult.getMissingEvidence().subList(0,
+                                    Math.min(2, evidenceResult.getMissingEvidence().size()))) + " 等），"
+                            + "但法律分析未对证据不足情况作出说明")
+                    .suggestion("在分析中明确说明证据不足之处及其对结论的影响，避免让用户误以为结论已有充分证据支撑")
+                    .build());
+        }
+    }
+
     private String buildFullText(LegalAnalysisResult r) {
         StringBuilder sb = new StringBuilder();
         if (r.getCaseAnalysis() != null) {
@@ -344,16 +390,27 @@ public class ReviewerAgentServiceImpl implements ReviewerAgentService {
 
     /**
      * LLM 深度审核：条款匹配性、事实一致性
+     * V2.0：带案件证据信息时使用证据核验模板（AGENT-003 检查项 a-f）
      */
     private ReviewResult llmReview(CaseAnalysisResult caseAnalysis,
                                   LegalAnalysisResult legalAnalysis,
-                                  List<HybridSearchResult> searchResults) {
+                                  List<HybridSearchResult> searchResults,
+                                  org.lexagent.model.vo.CaseContextVO caseContext,
+                                  org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult) {
         try {
             String caseJson = JSONUtil.toJsonStr(caseAnalysis);
             String analysisJson = JSONUtil.toJsonStr(legalAnalysis);
             String basisJson = JSONUtil.toJsonStr(searchResults);
-            String userPrompt = String.format(PromptConstant.REVIEWER_USER_TEMPLATE,
-                    caseJson, analysisJson, basisJson);
+            String userPrompt;
+            if (caseContext != null) {
+                userPrompt = PromptConstant.REVIEWER_WITH_EVIDENCE_USER_TEMPLATE.formatted(
+                        caseJson, analysisJson, basisJson,
+                        JSONUtil.toJsonStr(caseContext.getEvidences()),
+                        JSONUtil.toJsonStr(evidenceResult));
+            } else {
+                userPrompt = String.format(PromptConstant.REVIEWER_USER_TEMPLATE,
+                        caseJson, analysisJson, basisJson);
+            }
 
             String llmResponse = llmService.chat(PromptConstant.REVIEWER_SYSTEM, userPrompt);
             String json = llmService.extractJson(llmResponse);

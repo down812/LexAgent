@@ -59,6 +59,12 @@ public class ChatController {
     private MessageService messageService;
 
     @Autowired
+    private org.lexagent.service.CaseContextService caseContextService;
+
+    @Autowired
+    private org.lexagent.service.CaseService caseService;
+
+    @Autowired
     private AsyncTaskExecutor asyncTaskExecutor;
 
     @Autowired
@@ -72,10 +78,16 @@ public class ChatController {
      * <p>
      * 前端使用 fetch() 消费 text/event-stream，响应头需携带 token。
      * 事件序列：agent_start → agent_result → citation → content → done
+     * <p>
+     * V2.0（CHAT-001/003）：可选传入 caseId ——
+     *   1. 同步完成案件权限校验与上下文组装（异步线程无登录态）；
+     *   2. 会话与案件建立关联（案件详情可查问诊记录）；
+     *   3. Supervisor 按请求类型决定是否插入 Evidence Analysis Agent。
+     * 未传 caseId 时完全保持 V1.0 流程。
      */
     @PostMapping(value = "/consult", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Operation(summary = "法律智能问诊（SSE流式输出）",
-            description = "用户提交法律问题，系统通过多Agent协作生成法律回答，SSE实时推送处理过程")
+            description = "用户提交法律问题，系统通过多Agent协作生成法律回答，SSE实时推送处理过程；可传 caseId 注入案件上下文")
     public SseEmitter consult(@Valid @RequestBody ChatRequestDTO dto) {
         // 1. 同步获取登录用户ID（异步后 ThreadLocal 不可用）
         Long userId = LoginContext.getUserId();
@@ -83,33 +95,51 @@ public class ChatController {
             throw new BusinessException("用户未登录");
         }
 
-        log.info("法律问诊请求：userId={}, conversationId={}, query长度={}",
-                userId, dto.getConversationId(), StrUtil.length(dto.getQuery()));
+        // 2. 案件上下文（V2.0）：权限校验 + 组装必须在主线程完成
+        org.lexagent.model.vo.CaseContextVO loadedContext = null;
+        if (dto.getCaseId() != null) {
+            loadedContext = caseContextService.load(dto.getCaseId()); // 内部含属主/管理员校验
+        }
+        final org.lexagent.model.vo.CaseContextVO caseContext = loadedContext;
 
-        // 2. 创建/获取会话（conversationId 为前端生成的业务UUID，getOrCreate 后拿到自增主键 id）
+        log.info("法律问诊请求：userId={}, conversationId={}, query长度={}, caseId={}",
+                userId, dto.getConversationId(), StrUtil.length(dto.getQuery()), dto.getCaseId());
+
+        // 3. 创建/获取会话（conversationId 为前端生成的业务UUID，getOrCreate 后拿到自增主键 id）
         Conversation conversation = conversationService.getOrCreate(
                 userId, dto.getConversationId(), dto.getQuery());
         // 后续关联 messages/agent_tasks 均使用 conversations.id（自增主键）
         final Long conversationId = conversation.getId();
 
-        // 3. 保存用户消息
+        // 4. 会话与案件关联（CHAT-003：每次问诊明确所属案件；已关联则跳过）
+        if (caseContext != null) {
+            caseService.linkConversationIfAbsent(caseContext.getCaseId(), conversationId);
+        }
+
+        // 5. 保存用户消息
         Message userMessage = messageService.save(conversationId,
                 "user", dto.getQuery());
         final Long messageId = userMessage.getId();
 
-        // 4. 创建 SseEmitter，超时设为 Agent 超时 + 缓冲
+        // 6. 创建 SseEmitter，超时设为 Agent 超时 + 缓冲
         SseEmitter emitter = new SseEmitter(agentTimeoutMs + 30000);
 
-        // 5. 异步执行多 Agent 编排
+        // 7. 异步执行多 Agent 编排（案件上下文已提前组装，异步线程直接使用）
         asyncTaskExecutor.execute(() -> {
             try {
                 FinalLegalAnswer answer = supervisorAgentService.execute(
                         dto.getQuery(), conversationId, messageId,
-                        event -> sendSseEvent(emitter, event));
+                        caseContext, event -> sendSseEvent(emitter, event));
 
-                // 6. 保存 assistant 消息（最终回答的 JSON）
+                // 8. 保存 assistant 消息（最终回答的 JSON）
                 String answerJson = JSONUtil.toJsonStr(answer);
-                messageService.save(conversationId, "assistant", answerJson);
+                Message answerMessage = messageService.save(conversationId, "assistant", answerJson);
+
+                // 9. done 事件携带真实消息ID（V2.0 11.6：前端用于回答评价入口）
+                sendSseEvent(emitter, AgentEvent.of(
+                        "done", null, null,
+                        java.util.Map.of("assistantMessageId", answerMessage.getId()),
+                        "处理完成"));
 
             } catch (Exception e) {
                 log.error("多Agent编排失败：{}", e.getMessage(), e);

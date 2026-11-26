@@ -166,7 +166,7 @@ const collapsed = ref(false)
 
 // 菜单激活项必须响应式跟随真实路由，否则 el-menu router 模式下
 // 内部 active 状态会与路由 desync，导致点击"它以为已激活"的项时跳过 push
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => (route.path.startsWith('/cases') ? '/cases' : route.path))
 
 // 不使用 el-menu 的 router 模式（其内部状态机在重复点击/程序化导航后有 desync 边界问题），
 // 改为手动 router.push，确保每次点击都真实跳转
@@ -178,10 +178,12 @@ function handleMenuSelect(index) {
 const menuItems = computed(() => {
   const items = [
     { path: '/consult', title: '法律问诊', icon: 'ChatDotRound' },
+    { path: '/cases', title: '案件管理', icon: 'Briefcase' },
     { path: '/search', title: '检索测试', icon: 'Search' }
   ]
   if (userStore.isAdmin) {
     items.splice(1, 0, { path: '/knowledge', title: '知识库管理', icon: 'FolderOpened' })
+    items.push({ path: '/feedback-stats', title: '评价统计', icon: 'DataAnalysis' })
   }
   if (userStore.isSuperAdmin) {
     items.push({ path: '/admin', title: '子账号管理', icon: 'UserFilled' })

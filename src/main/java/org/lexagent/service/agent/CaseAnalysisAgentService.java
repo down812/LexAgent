@@ -18,4 +18,15 @@ public interface CaseAnalysisAgentService {
      * @return 结构化案件分析结果
      */
     CaseAnalysisResult analyze(String userQuery);
+
+    /**
+     * V2.0 阶段五（CHAT-001）：带案件档案上下文的分析
+     * 上下文为空时退化为普通分析
+     *
+     * @param userQuery       用户本次问题
+     * @param caseContextText 案件档案上下文文本（可为 null/空）
+     */
+    default CaseAnalysisResult analyze(String userQuery, String caseContextText) {
+        return analyze(userQuery);
+    }
 }

@@ -27,4 +27,16 @@ public interface SupervisorAgentService {
      */
     FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
                              Consumer<AgentEvent> eventCallback);
+
+    /**
+     * V2.0 阶段五（CHAT-001/AGENT-002）：带案件上下文的执行
+     * 上下文已在 Controller 层完成权限校验与组装（异步线程中无登录态）。
+     * 依据请求类型路由：涉及案件证据材料时插入 Evidence Analysis Agent（场景二），
+     * 否则走 V1.0 原有流程（场景一）。
+     *
+     * @param caseContext   案件上下文（null 表示普通咨询，走 V1.0 流程）
+     */
+    FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
+                             org.lexagent.model.vo.CaseContextVO caseContext,
+                             Consumer<AgentEvent> eventCallback);
 }

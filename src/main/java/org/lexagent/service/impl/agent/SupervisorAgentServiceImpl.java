@@ -29,14 +29,16 @@ import java.util.stream.Collectors;
 /**
  * Supervisor Agent 实现
  * <p>
- * 编排流程：
- *   1. Case Analysis Agent  —— 用户问题 → 结构化案件信息
- *   2. Legal Search Agent   —— 案件信息 → 检索法律条文
- *   3. Legal Analysis Agent  —— 案件+法律依据 → 法律分析
- *   4. Reviewer Agent        —— 法律分析 → 可信度审核
- *   5. 最终回答组装          —— 按需求文档第10章结构输出
+ * 编排流程（V2.0 阶段五升级，AGENT-002）：
+ *   1. Case Analysis Agent        —— 用户问题（+案件档案上下文）→ 结构化案件信息
+ *   2. Evidence Analysis Agent    —— 仅当有案件上下文且请求涉及证据材料时插入（按请求类型路由）
+ *   3. Legal Search Agent         —— 案件信息 → 检索法律条文
+ *   4. Legal Analysis Agent       —— 案件（含证据关键信息）+法律依据 → 法律分析
+ *   5. Reviewer Agent             —— 法律分析 → 可信度审核（V2.0 含证据核验）
+ *   6. 最终回答组装               —— 第10章结构 + CHAT-002 追问信息
  * <p>
- * 每个 Agent 执行时推送 SSE 事件，持久化 AgentTask 记录。
+ * 每个 Agent 执行时推送 SSE 事件，持久化 AgentTask 记录（V2.0 附带 case_id/task_group_id）。
+ * 普通咨询（无案件上下文）完全保持 V1.0 流程，满足 CHAT-003 上下文隔离要求。
  */
 @Slf4j
 @Service
@@ -55,24 +57,50 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
     private ReviewerAgentService reviewerAgent;
 
     @Autowired
+    private org.lexagent.service.agent.EvidenceAnalysisAgentService evidenceAnalysisAgent;
+
+    @Autowired
     private AgentTaskService agentTaskService;
 
     @Value("${lexagent.rag.agent.search-top-k:5}")
     private int searchTopK;
 
+    /**
+     * 证据分析路由关键词（AGENT-002：根据用户请求类型判断是否调用 Evidence Analysis Agent）。
+     * 采用规则路由：稳定可复现、零额外 LLM 延迟；后续可扩展为 LLM 意图分类。
+     */
+    private static final String[] EVIDENCE_ROUTE_KEYWORDS = {
+            "证据", "材料", "清单", "缺少", "缺什么", "补充", "足够", "充分",
+            "合同", "流水", "转账记录", "聊天记录", "截图", "录音", "考勤",
+            "工资条", "发票", "票据", "证明文件", "能不能赢", "怎么收集"
+    };
+
     @Override
     public FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
                                     Consumer<AgentEvent> eventCallback) {
-        log.info("[Supervisor] 开始编排，conversationId={}, query长度={}", conversationId, StrUtil.length(userQuery));
+        return execute(userQuery, conversationId, messageId, null, eventCallback);
+    }
+
+    @Override
+    public FinalLegalAnswer execute(String userQuery, Long conversationId, Long messageId,
+                                    org.lexagent.model.vo.CaseContextVO caseContext,
+                                    Consumer<AgentEvent> eventCallback) {
+        boolean withCase = caseContext != null;
+        log.info("[Supervisor] 开始编排，conversationId={}, query长度={}, 案件上下文={}",
+                conversationId, StrUtil.length(userQuery), withCase ? caseContext.getCaseNo() : "无");
         long totalStart = System.currentTimeMillis();
+        // 一次完整协作任务标识（V2.0 12.9 agent_tasks 扩展）
+        String taskGroupId = java.util.UUID.randomUUID().toString();
+        Long caseId = withCase ? caseContext.getCaseId() : null;
+        String contextText = withCase ? caseContext.toPromptText() : null;
 
         // ========== 1. Case Analysis Agent ==========
         AgentTaskWrapper caseTask = startAgent(AgentConstant.AGENT_CASE_ANALYSIS,
-                AgentConstant.AGENT_NAME_CASE_ANALYSIS, conversationId, messageId,
+                AgentConstant.AGENT_NAME_CASE_ANALYSIS, conversationId, messageId, caseId, taskGroupId,
                 userQuery, eventCallback);
         CaseAnalysisResult caseAnalysis;
         try {
-            caseAnalysis = caseAnalysisAgent.analyze(userQuery);
+            caseAnalysis = caseAnalysisAgent.analyze(userQuery, contextText);
         } catch (Exception e) {
             failAgent(caseTask, e.getMessage(), eventCallback);
             throw e;
@@ -81,9 +109,35 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
         successAgent(caseTask, caseJson, eventCallback,
                 "案件分析完成：" + caseAnalysis.getDomain() + " · " + caseAnalysis.getCaseType());
 
-        // ========== 2. Legal Search Agent ==========
+        // ========== 2. Evidence Analysis Agent（按请求类型路由，AGENT-002 场景二） ==========
+        org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult = null;
+        if (withCase && needEvidenceAnalysis(userQuery, caseContext)) {
+            AgentTaskWrapper evidenceTask = startAgent(AgentConstant.AGENT_EVIDENCE_ANALYSIS,
+                    AgentConstant.AGENT_NAME_EVIDENCE_ANALYSIS, conversationId, messageId, caseId, taskGroupId,
+                    userQuery, eventCallback);
+            try {
+                evidenceResult = evidenceAnalysisAgent.analyze(caseContext, userQuery);
+            } catch (Exception e) {
+                // 证据分析失败不阻断主流程（降级：跳过证据维度）
+                failAgent(evidenceTask, e.getMessage(), eventCallback);
+                evidenceResult = null;
+            }
+            if (evidenceResult != null) {
+                String evidenceJson = JSONUtil.toJsonStr(evidenceResult);
+                successAgent(evidenceTask, evidenceJson, eventCallback,
+                        "证据分析完成，发现 " + evidenceResult.getMissingEvidence().size() + " 项缺失");
+            }
+        }
+
+        // ========== 2.5 案件上下文合并（供 Legal Analysis / Reviewer 感知证据情况） ==========
+        if (withCase) {
+            mergeCaseContext(caseAnalysis, caseContext, evidenceResult);
+            caseJson = JSONUtil.toJsonStr(caseAnalysis);
+        }
+
+        // ========== 3. Legal Search Agent ==========
         AgentTaskWrapper searchTask = startAgent(AgentConstant.AGENT_LEGAL_SEARCH,
-                AgentConstant.AGENT_NAME_LEGAL_SEARCH, conversationId, messageId,
+                AgentConstant.AGENT_NAME_LEGAL_SEARCH, conversationId, messageId, caseId, taskGroupId,
                 caseJson, eventCallback);
         List<HybridSearchResult> searchResults;
         try {
@@ -109,9 +163,9 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
                     citations, "法律依据"));
         }
 
-        // ========== 3. Legal Analysis Agent ==========
+        // ========== 4. Legal Analysis Agent ==========
         AgentTaskWrapper analysisTask = startAgent(AgentConstant.AGENT_LEGAL_ANALYSIS,
-                AgentConstant.AGENT_NAME_LEGAL_ANALYSIS, conversationId, messageId,
+                AgentConstant.AGENT_NAME_LEGAL_ANALYSIS, conversationId, messageId, caseId, taskGroupId,
                 caseJson + "|" + searchJson, eventCallback);
         LegalAnalysisResult legalAnalysis;
         try {
@@ -124,13 +178,14 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
         successAgent(analysisTask, analysisJson, eventCallback,
                 "法律分析完成");
 
-        // ========== 4. Reviewer Agent ==========
+        // ========== 5. Reviewer Agent（V2.0 含证据核验） ==========
         AgentTaskWrapper reviewTask = startAgent(AgentConstant.AGENT_REVIEWER,
-                AgentConstant.AGENT_NAME_REVIEWER, conversationId, messageId,
+                AgentConstant.AGENT_NAME_REVIEWER, conversationId, messageId, caseId, taskGroupId,
                 analysisJson, eventCallback);
         ReviewResult reviewResult;
         try {
-            reviewResult = reviewerAgent.review(caseAnalysis, legalAnalysis, searchResults);
+            reviewResult = reviewerAgent.review(caseAnalysis, legalAnalysis, searchResults,
+                    caseContext, evidenceResult);
         } catch (Exception e) {
             failAgent(reviewTask, e.getMessage(), eventCallback);
             // 审核失败不阻断流程，降级为默认通过
@@ -145,8 +200,8 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
         successAgent(reviewTask, reviewJson, eventCallback,
                 "法律依据核验完成，可信度：" + reviewResult.getConfidenceScore());
 
-        // ========== 5. 最终回答组装 ==========
-        FinalLegalAnswer finalAnswer = buildFinalAnswer(caseAnalysis, legalAnalysis, reviewResult);
+        // ========== 6. 最终回答组装（含 CHAT-002 追问信息） ==========
+        FinalLegalAnswer finalAnswer = buildFinalAnswer(caseAnalysis, legalAnalysis, reviewResult, evidenceResult);
 
         // 推送 content 事件（最终回答）
         if (eventCallback != null) {
@@ -161,9 +216,64 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
                     null, "处理完成，耗时 " + totalCost + "ms"));
         }
 
-        log.info("[Supervisor] 编排完成，总耗时={}ms，confidence={}",
-                System.currentTimeMillis() - totalStart, reviewResult.getConfidenceScore());
+        log.info("[Supervisor] 编排完成，总耗时={}ms，confidence={}, evidenceAgent={}",
+                System.currentTimeMillis() - totalStart, reviewResult.getConfidenceScore(),
+                evidenceResult != null);
         return finalAnswer;
+    }
+
+    /**
+     * AGENT-002 路由判断：是否需要调用 Evidence Analysis Agent。
+     * 规则：用户请求命中证据相关关键词，或案件已有证据/清单材料时，
+     * 且用户问题偏向"证据收集/材料是否充分"类，才插入证据分析（避免普通咨询被拖慢）。
+     */
+    private boolean needEvidenceAnalysis(String userQuery, org.lexagent.model.vo.CaseContextVO context) {
+        String q = StrUtil.blankToDefault(userQuery, "");
+        for (String kw : EVIDENCE_ROUTE_KEYWORDS) {
+            if (q.contains(kw)) {
+                log.info("[Supervisor] 命中证据路由关键词[{}]，插入 Evidence Analysis Agent", kw);
+                return true;
+            }
+        }
+        // 案件已有证据且用户在追问案情时，也可以提供证据视角（宽松触发）
+        return !context.getEvidences().isEmpty() && (q.contains("分析") || q.contains("怎么办")
+                || q.contains("建议") || q.contains("评估"));
+    }
+
+    /**
+     * 将案件档案事实、证据概览与证据分析关键信息合并进 CaseAnalysisResult，
+     * 使 Legal Analysis Agent 无需改接口即可感知案件上下文（facts 标注来源防混淆）。
+     */
+    private void mergeCaseContext(CaseAnalysisResult caseAnalysis,
+                                  org.lexagent.model.vo.CaseContextVO context,
+                                  org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult) {
+        if (caseAnalysis.getFacts() == null) {
+            caseAnalysis.setFacts(new ArrayList<>());
+        }
+        // 已确认案件事实（避免与本次描述重复）
+        for (String fact : context.getConfirmedFacts()) {
+            if (!caseAnalysis.getFacts().contains(fact)) {
+                caseAnalysis.getFacts().add(fact);
+            }
+        }
+        // 证据概览
+        for (org.lexagent.model.vo.CaseContextVO.EvidenceBrief ev : context.getEvidences()) {
+            StringBuilder line = new StringBuilder("【已有证据】").append(ev.getEvidenceName());
+            if (ev.getEvidenceType() != null && !ev.getEvidenceType().isEmpty()) {
+                line.append("（类型：").append(ev.getEvidenceType());
+                if (ev.getAnalysisSummary() != null && !ev.getAnalysisSummary().isEmpty()) {
+                    line.append("；摘要：").append(StrUtil.sub(ev.getAnalysisSummary(), 0, 80));
+                }
+                line.append("）");
+            }
+            caseAnalysis.getFacts().add(line.toString());
+        }
+        // 证据分析关键发现
+        if (evidenceResult != null) {
+            for (String finding : evidenceResult.getKeyFindings()) {
+                caseAnalysis.getFacts().add("【证据分析】" + finding);
+            }
+        }
     }
 
     // ==================== 最终回答组装 ====================
@@ -171,10 +281,12 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
     /**
      * 按需求文档第10章结构组装最终回答：
      * 【初步判断】【法律依据】【结合你的情况】【处理建议】【风险提示】
+     * V2.0（CHAT-002）：附加缺失关键信息追问（missingInfo），用户可一键补充为案件事实
      */
     private FinalLegalAnswer buildFinalAnswer(CaseAnalysisResult caseAnalysis,
                                               LegalAnalysisResult legalAnalysis,
-                                              ReviewResult reviewResult) {
+                                              ReviewResult reviewResult,
+                                              org.lexagent.model.vo.EvidenceAnalysisResult evidenceResult) {
         // 初步判断
         String preliminary = buildPreliminaryJudgment(caseAnalysis, legalAnalysis);
 
@@ -191,6 +303,27 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
             }
         }
 
+        // CHAT-002 追问信息：案件分析缺失信息 + 证据缺失情况（去重、限 5 条）
+        List<String> missingInfo = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        if (caseAnalysis.getMissingInformation() != null) {
+            for (String m : caseAnalysis.getMissingInformation()) {
+                if (StrUtil.isNotBlank(m) && seen.add(m.trim())) {
+                    missingInfo.add(m.trim());
+                }
+            }
+        }
+        if (evidenceResult != null) {
+            for (String m : evidenceResult.getMissingEvidence()) {
+                if (StrUtil.isNotBlank(m) && seen.add(m.trim())) {
+                    missingInfo.add(m.trim());
+                }
+            }
+        }
+        if (missingInfo.size() > 5) {
+            missingInfo = new ArrayList<>(missingInfo.subList(0, 5));
+        }
+
         return FinalLegalAnswer.builder()
                 .preliminaryJudgment(preliminary)
                 .legalBasis(legalAnalysis.getLegalBasis())
@@ -199,6 +332,10 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
                 .riskWarning(PromptConstant.FINAL_ANSWER_RISK)
                 .confidenceScore(reviewResult.getConfidenceScore())
                 .reviewPassed(reviewResult.getPassed())
+                .missingInfo(missingInfo.isEmpty() ? null : missingInfo)
+                .evidenceReferences(evidenceResult == null
+                        || evidenceResult.getKeyFindings().isEmpty()
+                        ? null : evidenceResult.getKeyFindings())
                 .build();
     }
 
@@ -226,7 +363,14 @@ public class SupervisorAgentServiceImpl implements SupervisorAgentService {
     private AgentTaskWrapper startAgent(String agentType, String agentName,
                                         Long conversationId, Long messageId,
                                         String input, Consumer<AgentEvent> callback) {
-        var task = agentTaskService.create(conversationId, messageId, agentType, input);
+        return startAgent(agentType, agentName, conversationId, messageId, null, null, input, callback);
+    }
+
+    private AgentTaskWrapper startAgent(String agentType, String agentName,
+                                        Long conversationId, Long messageId,
+                                        Long caseId, String taskGroupId,
+                                        String input, Consumer<AgentEvent> callback) {
+        var task = agentTaskService.create(conversationId, messageId, caseId, taskGroupId, agentType, input);
         agentTaskService.markRunning(task.getId());
         if (callback != null) {
             callback.accept(AgentEvent.of(AgentConstant.SSE_AGENT_START,

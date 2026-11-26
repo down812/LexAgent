@@ -21,6 +21,19 @@ public interface AgentTaskService {
     AgentTask create(Long conversationId, Long messageId, String agentType, String input);
 
     /**
+     * 创建任务记录（V2.0 阶段五：带案件上下文与任务组标识）
+     *
+     * @param conversationId 会话ID
+     * @param messageId       消息ID
+     * @param caseId          所属案件ID（可为 null）
+     * @param taskGroupId     一次完整协作任务标识（UUID，可为 null）
+     * @param agentType       Agent类型
+     * @param input           输入内容(JSON)
+     */
+    AgentTask create(Long conversationId, Long messageId, Long caseId,
+                     String taskGroupId, String agentType, String input);
+
+    /**
      * 标记任务为运行中
      */
     void markRunning(Long taskId);
